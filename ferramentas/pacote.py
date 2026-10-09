@@ -28,6 +28,7 @@ import json
 import os
 import secrets
 import sys
+import unicodedata
 from datetime import datetime, timezone
 
 from cryptography.hazmat.primitives import hashes
@@ -47,7 +48,9 @@ def norm_matricula(m: str) -> str:
 
 
 def norm_codigo(c: str) -> str:
-    return "".join(ch for ch in str(c or "").upper() if ch.isalnum())
+    """Igual ao normCodigo de cripto.js: sem acento, maiúscula, só letras/números."""
+    sem_acento = unicodedata.normalize("NFD", str(c or "")).encode("ascii", "ignore").decode("ascii")
+    return "".join(ch for ch in sem_acento.upper() if ch.isalnum())
 
 
 def id_de(matricula: str) -> str:

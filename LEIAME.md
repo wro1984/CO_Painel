@@ -1,4 +1,4 @@
-# NS Painel · B2C Suporte (v3.2.0)
+# NS Painel · B2C Suporte (v3.3.0)
 
 Painel de NS 5 min por **Dia**, **Semana** e **Mês**, instalável no celular.
 
@@ -10,7 +10,8 @@ números nunca vão abertos para o GitHub: o MAPI publica um `dados.json`
 1. A pessoa entra no MAPI (pelo HUB, na rede da empresa) e pede acesso ao NS Painel.
 2. Um administrador aprova no MAPI. O MAPI mostra à pessoa um **código pessoal**
    (`XXXX-XXXX-XXXX-XXXX`), uma única vez.
-3. No app, a pessoa digita **matrícula + código** uma vez. O aparelho guarda uma chave
+   Ou o administrador cadastra a pessoa direto no MAPI e escolhe a chave (pode ser uma palavra).
+3. No app, a pessoa digita **matrícula + chave** uma vez (acento, maiúsculas e traços não importam). O aparelho guarda uma chave
    que não pode ser lida nem copiada pelo app, e o código não fica salvo.
 4. Acesso removido no MAPI: na publicação seguinte a chave dos dados muda, a pessoa sai
    da lista e o app dela apaga o acesso e os dados salvos no aparelho.

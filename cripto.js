@@ -27,9 +27,13 @@
   const hex = buf => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
 
   const normMatricula = m => String(m || '').trim().toUpperCase().replace(/\s+/g, '');
-  // aceita com ou sem traços e em minúsculas (o alfabeto não tem O, 0, I nem 1, que se confundem)
-  const normCodigo = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-  const codigoValido = c => normCodigo(c).length === 16 && [...normCodigo(c)].every(ch => ALFABETO.includes(ch));
+  // A chave pode ser o código sorteado (XXXX-XXXX-XXXX-XXXX) ou uma palavra definida pelo admin.
+  // Sem acento, maiúscula e só letras/números: "Girassól 26" e "girassol26" são a mesma chave.
+  // Precisa ser IGUAL a norm_codigo do MAPI (ns_painel.py) e de ferramentas/pacote.py.
+  // (filtra ANTES de passar para maiúscula: "ß".toUpperCase() vira "SS" no JS e não no Python)
+  const normCodigo = c => String(c || '').normalize('NFD').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  const CHAVE_MINIMA = 4;
+  const codigoValido = c => normCodigo(c).length >= CHAVE_MINIMA && normCodigo(c).length <= 64;
 
   async function idDe(matricula) {
     return hex(await C.subtle.digest('SHA-256', enc.encode('co-painel:' + normMatricula(matricula))));
@@ -50,7 +54,7 @@
     if (!a) { const e = new Error('Seu acesso a este painel foi removido. Se precisar, peça de novo no MAPI.'); e.code = 'sem_acesso'; throw e; }
     let rawK;
     try { rawK = await C.subtle.decrypt({ name: 'AES-GCM', iv: b64(a.iv) }, chaveUsuario, b64(a.ct)); }
-    catch (e) { const er = new Error('Código de acesso incorreto.'); er.code = 'codigo'; throw er; }
+    catch (e) { const er = new Error('Chave de acesso incorreta.'); er.code = 'codigo'; throw er; }
     const k = await C.subtle.importKey('raw', rawK, 'AES-GCM', false, ['decrypt']);
     let txt;
     try { txt = await C.subtle.decrypt({ name: 'AES-GCM', iv: b64(pacote.dados.iv) }, k, b64(pacote.dados.ct)); }
@@ -75,7 +79,7 @@
     conferePacote(pacote);
     const a = pacote.acessos[cred.id];
     // o salt da pessoa só muda se o acesso foi refeito no MAPI: aí o código antigo não vale mais
-    if (a && a.salt !== cred.salt) { const e = new Error('Seu acesso foi renovado no MAPI. Entre de novo com o código novo.'); e.code = 'sem_acesso'; throw e; }
+    if (a && a.salt !== cred.salt) { const e = new Error('Sua chave foi trocada. Entre de novo com a chave nova.'); e.code = 'sem_acesso'; throw e; }
     return abrirComChave(pacote, cred.chave, cred.id);
   }
 

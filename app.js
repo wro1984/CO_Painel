@@ -1,7 +1,7 @@
 /* NS Painel — app (v3.2: dados criptografados publicados pelo MAPI, com acesso aprovado) */
 (function () {
   'use strict';
-  const APP_VERSION = '3.2.0';
+  const APP_VERSION = '3.3.0';
   const P = window.NSData;
   const K = window.NSCripto;
   const $ = s => document.querySelector(s);
@@ -171,7 +171,7 @@
         ${loginMsg ? `<div class="banner warn">${esc(loginMsg)}</div>` : ''}
         <form id="fLogin" autocomplete="off">
           <div class="field"><label for="lMat">Matrícula</label><input id="lMat" name="matricula" autocapitalize="characters" spellcheck="false" required></div>
-          <div class="field"><label for="lCod">Código de acesso</label><input id="lCod" name="codigo" placeholder="XXXX-XXXX-XXXX-XXXX" autocapitalize="characters" spellcheck="false" required></div>
+          <div class="field"><label for="lCod">Chave de acesso</label><input id="lCod" name="codigo" placeholder="a chave que você recebeu" autocapitalize="none" spellcheck="false" required></div>
           <div class="banner bad" id="lErro" hidden></div>
           <button class="btn" id="bEntrar" type="submit">Entrar</button>
         </form>
@@ -180,16 +180,16 @@
         <ol class="tips">
           <li>Entre no <b>MAPI</b> pela rede da empresa (Portal de Aplicações).</li>
           <li>Na área do NS Painel, toque em <b>Pedir acesso</b>.</li>
-          <li>Quando o pedido for aprovado, o MAPI mostra o seu código. Digite aqui com a sua matrícula.</li>
+          <li>Quando o pedido for aprovado, o MAPI mostra a sua chave. Digite aqui com a sua matrícula.</li>
         </ol>
-        <div class="small muted" style="margin-top:8px">O código é pessoal. Depois de entrar, este aparelho lembra o acesso e o código não fica salvo.</div>
+        <div class="small muted" style="margin-top:8px">Também pode receber a chave direto do administrador. Ela é pessoal; maiúsculas, acentos e traços não fazem diferença. Depois de entrar, este aparelho lembra o acesso e a chave não fica salva.</div>
       </div>`;
     const erro = m => { const e = $('#lErro'); e.textContent = m; e.hidden = false; };
     $('#fLogin').onsubmit = async ev => {
       ev.preventDefault();
       const mat = $('#lMat').value, cod = $('#lCod').value;
       if (!K.normMatricula(mat)) return erro('Informe a matrícula.');
-      if (!K.codigoValido(cod)) return erro('O código tem 16 letras e números, no formato XXXX-XXXX-XXXX-XXXX.');
+      if (!K.codigoValido(cod)) return erro('Digite a chave de acesso que você recebeu (pelo menos 4 letras ou números).');
       const btn = $('#bEntrar'); btn.disabled = true; btn.textContent = 'Conferindo…';
       try {
         if (!pacoteLogin) {
