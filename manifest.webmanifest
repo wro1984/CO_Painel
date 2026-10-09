@@ -1,0 +1,17 @@
+{
+  "name": "NS Painel · B2C Suporte",
+  "short_name": "NS Painel",
+  "description": "Painel de nível de serviço (NS 5 min) do B2C Suporte por dia, semana e mês.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#642A90",
+  "theme_color": "#642A90",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

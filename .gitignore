@@ -1,0 +1,7 @@
+# Nunca publicar dados abertos: o repositório é público.
+data.txt
+*.txt
+!requirements.txt
+# Acessos (id, salt e chave de cada pessoa) — segredo, fica só no MAPI
+acessos*.json
+__pycache__/
