@@ -1,4 +1,4 @@
-# NS Painel · B2C Suporte (v3.3.0)
+# NS Painel · B2C Suporte (v3.4.0)
 
 Painel de NS 5 min por **Dia**, **Semana** e **Mês**, instalável no celular.
 
@@ -34,6 +34,10 @@ O mesmo exportado do Oracle SQL Developer: colunas separadas por **tabulação**
 
 O app confere o arquivo antes de usar (NS = ATE ÷ TOTAL, VOLUME ≥ TOTAL ≥ ATE, somas dos
 dias, linhas repetidas). Se vier com erro, ignora e continua com os últimos dados válidos.
+
+## Meta
+A meta do NS é **90%**, definida no app (a coluna `META_NS` do arquivo é ignorada).
+Situação: Meta atingida ≥ 90% · Em atenção ≥ 70% · Crítico < 70%.
 
 ## Testar localmente
 ```
