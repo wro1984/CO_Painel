@@ -1,7 +1,7 @@
 /* NS Painel — app (v3.2: dados criptografados publicados pelo MAPI, com acesso aprovado) */
 (function () {
   'use strict';
-  const APP_VERSION = '3.5.0';
+  const APP_VERSION = '3.6.0';
   const P = window.NSData;
   const K = window.NSCripto;
   const $ = s => document.querySelector(s);
@@ -52,6 +52,12 @@
   let pubStatus = null;    // situação do dados.json publicado
   let cred = null;         // acesso guardado neste aparelho (ver cripto.js)
   let pacoteLogin = null;  // dados.json baixado para a tela de entrada
+  // Visão do MAPI: o app aberto dentro do MAPI (iframe com ?mapi). Quem está logado no MAPI já pode ver os
+  // dados, então não há login: o MAPI abre o dados.json do lado dele e manda o TXT por postMessage.
+  // Nada é gravado no aparelho (sem IndexedDB, sem chave, sem service worker) e só se aceita mensagem
+  // da janela que contém o app.
+  const MODO_MAPI = window.parent !== window && new URLSearchParams(location.search).has('mapi');
+  let mapiInfo = null;     // {origem, erro} do último envio do MAPI
   let modo = (() => { try { const m = localStorage.getItem('ns-modo'); return ['DIA', 'SEMANA', 'MES'].includes(m) ? m : 'DIA'; } catch (e) { return 'DIA'; } })();
 
   async function reload() {
@@ -110,6 +116,17 @@
     render(); window.scrollTo(0, 0);
   }
   function render() {
+    if (MODO_MAPI) {
+      $('#nav').hidden = true; $('#bShare').hidden = true;
+      if (!snaps.length) {
+        main.classList.remove('modo-painel');
+        main.innerHTML = mapiInfo && mapiInfo.erro
+          ? `<div class="card"><div class="banner bad">${esc(mapiInfo.erro)}</div></div>`
+          : '<div class="card empty"><p>Carregando os dados pelo MAPI…</p></div>';
+        return;
+      }
+      view = 'painel'; main.classList.add('modo-painel'); renderPainel(); return;
+    }
     $('#nav').hidden = !cred;
     if (!cred) { $('#bShare').hidden = true; main.classList.remove('modo-painel'); renderLogin(); return; }
     main.classList.toggle('modo-painel', view === 'painel');
@@ -488,7 +505,8 @@
 
   function renderPainel() {
     const per = periodos();
-    const pubErr = pubStatus && pubStatus.estado === 'invalido' ? `<div class="banner bad small">Os dados publicados têm erros e foram ignorados — mostrando os últimos dados válidos.</div>` : '';
+    const avisoMapi = MODO_MAPI && mapiInfo ? `<div class="banner info small">Visão do MAPI · ${esc(mapiInfo.origem || '')}</div>` : '';
+    const pubErr = avisoMapi + (pubStatus && pubStatus.estado === 'invalido' ? `<div class="banner bad small">Os dados publicados têm erros e foram ignorados — mostrando os últimos dados válidos.</div>` : '');
     if (!per.size) {
       main.innerHTML = `${pubErr}<div class="card empty"><div style="font-size:40px">📊</div><p>Nenhum dado ainda.</p>
         <button class="btn" id="bGo">Importar o TXT</button></div>`;
@@ -1074,14 +1092,31 @@
 
   // ---------------- Início ----------------
   window.addEventListener('beforeunload', e => { if (preview) { e.preventDefault(); e.returnValue = ''; } });
-  (async () => {
+  if (MODO_MAPI) {
+    window.addEventListener('message', e => {
+      if (e.source !== window.parent || !e.data || e.data.tipo !== 'co-painel:dados') return;
+      const d = e.data;
+      if (d.erro) { snaps = []; mapiInfo = { erro: d.erro }; render(); return; }
+      const texto = String(d.texto || '');
+      const pr = P.parse(texto);
+      if (pr.erros.length) {
+        snaps = []; mapiInfo = { erro: `Os dados têm ${pr.erros.length} erro(s): ` + pr.erros.slice(0, 3).map(x => x.msg).join(' · ') };
+      } else {
+        snaps = [montarSnap(pr, P.hash(texto), 'publicado', 'MAPI', d.publicadoEm ? Date.parse(d.publicadoEm) : Date.now())];
+        mapiInfo = { origem: d.origem || '' };
+      }
+      sel = null; render();
+    });
+    render();
+    window.parent.postMessage({ tipo: 'co-painel:pronto', versao: APP_VERSION }, '*');
+  } else (async () => {
     try { cred = await K.lerCred(); await reload(); } catch (e) { main.innerHTML = `<div class="card"><div class="banner bad">Erro ao abrir os dados: ${esc(e.message)}</div></div>`; return; }
     if (!cred && snaps.length) { for (const s of snaps) await dbDel(s.id).catch(() => {}); snaps = []; }  // dados sem acesso: não ficam
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     go(snaps.length ? 'painel' : 'dados');
     buscarPublicado(false);
   })();
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  if (!MODO_MAPI && 'serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
   $('#bShare').addEventListener('click', abrirCompartilhar);
   window.__ns = { version: APP_VERSION, state: () => ({ snaps, preview, view, modo, pubStatus, logado: !!cred }), reload, buscarPublicado, share: { dados: dadosCompartilhar, texto: () => textoCompartilhar(), teams: () => htmlTeams(), simples: () => textoSimples(), svg: () => svgCompartilhar(dadosCompartilhar()), png: async () => { const b = await pngDeSvg(svgCompartilhar(dadosCompartilhar())); return { size: b.size, type: b.type, url: await new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b); }) }; } } };
 })();

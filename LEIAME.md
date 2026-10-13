@@ -1,4 +1,4 @@
-# NS Painel · B2C Suporte (v3.5.0)
+# NS Painel · B2C Suporte (v3.6.0)
 
 Painel de NS 5 min por **Dia**, **Semana** e **Mês**, instalável no celular.
 
@@ -41,6 +41,10 @@ No modo **Dia**, acima dos gráficos ficam as cápsulas **DOM SEG TER QUA QUI SE
 - Tocar num dia da semana: mostra só aquele dia (até 7 ocorrências: segunda com segunda etc.). Cards, gráficos e tabela passam a comparar com o mesmo dia da semana anterior.
 - Tocar de novo no dia ligado, ou no **✕**, volta aos dias corridos. O ✕ só aparece com o filtro ligado.
 - Para ter 7 de cada dia da semana, o TXT precisa trazer pelo menos 49 dias (com 42 dias aparecem 6).
+
+## Visão no MAPI
+Em Magic → NS Painel o app aparece numa moldura de celular, sem login, para quem está logado no MAPI.
+O MAPI abre os dados do lado dele e entrega ao app; nada fica gravado no navegador.
 
 ## Meta
 A meta do NS é **90%**, definida no app (a coluna `META_NS` do arquivo é ignorada).

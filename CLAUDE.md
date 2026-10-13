@@ -93,6 +93,17 @@ Sem servidor (abrindo o `index.html` direto do disco) o app não busca dados nem
 | `ferramentas/` | referência da criptografia e gerador de dados de teste |
 | `dados.json` | **gerado pelo MAPI — não editar** |
 
+## Visão do MAPI (app dentro do MAPI, sem login)
+
+Em Magic → NS Painel, o MAPI mostra o app num iframe com `?mapi` na URL. Nesse modo (`MODO_MAPI`
+em `app.js`) o app **não pede login, não grava nada** (sem IndexedDB, sem chave, sem service worker)
+e recebe o TXT do MAPI por `postMessage`:
+- o app manda `{tipo: 'co-painel:pronto', versao}` para a janela pai;
+- o MAPI responde `{tipo: 'co-painel:dados', texto, publicadoEm, origem}` (ou `{erro}`), e o app só
+  aceita mensagem vinda da própria janela pai.
+Fora de um iframe, `?mapi` não muda nada: o login continua obrigatório. Não remova essas travas,
+e não mude os nomes das mensagens sem mudar `static/js/ns_painel.js` no MAPI junto.
+
 ## Acesso das pessoas
 
 Pedir, aprovar, remover e definir chaves é no MAPI (Magic → NS Painel), não aqui.
