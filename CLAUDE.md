@@ -31,6 +31,9 @@ IPTBM (Oracle) ──► MAPI (servidor interno) ──► dados.json CRIPTOGRAF
 4. **Não mudar o formato da criptografia sozinho.** `cripto.js` precisa continuar igual ao que o
    MAPI gera em `ns_painel.py` (e à referência `ferramentas/pacote.py`):
    - `dados.json`: `{app:"co-painel", v:1, kdf:{alg, iter}, acessos:{id:{salt,iv,ct}}, dados:{iv,ct}}`;
+   - campo **opcional** `sistemas:{iv,ct}` (desde a v3.7.0): o TXT de problemas sistêmicos (mesmo
+     formato do `sistemas.txt`), cifrado com a **mesma chave** de `dados` e um `iv` próprio. Sem o
+     campo, o app não mostra o card de sistemas; erro só nesse campo nunca bloqueia o NS;
    - `id` = SHA-256 de `"co-painel:" + MATRÍCULA` (maiúscula, sem espaços);
    - chave da pessoa = PBKDF2-SHA256 (`kdf.iter` iterações) da chave normalizada; AES-GCM 256;
    - **normalização da chave** (`normCodigo`): tira acento, mantém só `A-Z a-z 0-9`, depois maiúscula.
@@ -55,12 +58,13 @@ IPTBM (Oracle) ──► MAPI (servidor interno) ──► dados.json CRIPTOGRAF
 | Tabela de períodos | final de `painelTipo()` em `app.js` |
 | Mensagem de compartilhar (WhatsApp/Teams) | `conteudoMsg()`, `textoCompartilhar()`, `htmlTeams()`, `svgCompartilhar()` em `app.js` |
 | Tela de login | `renderLogin()` em `app.js` |
+| Card de problemas sistêmicos (matriz, lista, detalhe) | `sistemas.js` (dados: `sistemasDoPacote()` em `app.js`) |
 | **Ordem, colunas ou regra dos dados que vêm do banco** | **não é aqui**: é a consulta `sql/ns_painel_b2c_suporte.sql` no repositório do MAPI |
 
 ## Antes de cada push
 
-1. **Atualize a versão** em dois lugares, com o mesmo número: `APP_VERSION` em `app.js` e `VERSION` em
-   `sw.js`. Sem isso o celular continua com a versão antiga em cache.
+1. **Atualize a versão** em três lugares, com o mesmo número: `APP_VERSION` em `app.js`, `VERSION` em
+   `sw.js` e `VERSAO` em `sistemas.js` (com versões diferentes o card de sistemas não liga). Sem isso o celular continua com a versão antiga em cache.
 2. Arquivo novo que o app usa? Inclua em `CORE` no `sw.js` (senão não funciona offline).
 3. Teste localmente (abaixo), no tamanho de celular (~390 px), em claro e escuro.
 4. `git pull` antes do push: o MAPI faz commits frequentes no `dados.json`. Use merge, não force-push.
@@ -71,7 +75,7 @@ IPTBM (Oracle) ──► MAPI (servidor interno) ──► dados.json CRIPTOGRAF
 pip install cryptography
 python ferramentas/dados_teste.py --ate 2026-10-08 > teste.txt        # números inventados
 python ferramentas/pacote.py montar --txt teste.txt --acesso TESTE:girassol \
-    --estado acessos_local.json --saida dados.json
+    --estado acessos_local.json --saida dados.json          # + --sistemas <txt> para o card de sistemas
 python -m http.server 8000                                             # abra http://localhost:8000
 ```
 
@@ -87,11 +91,17 @@ Sem servidor (abrindo o `index.html` direto do disco) o app não busca dados nem
 | `index.html` | estrutura, estilos (paleta da empresa) e navegação Painel / Dados / Histórico |
 | `app.js` | estado, telas, gráficos, compartilhar, histórico, login e saída |
 | `parser.js` | leitura e conferência do TXT (também roda no Node) |
+| `sistemas.js` | card de problemas sistêmicos (matriz sistemas × períodos, lista e detalhe dos chamados) |
 | `cripto.js` | login, chave guardada no aparelho (CryptoKey não extraível) e abertura do `dados.json` |
 | `sw.js` | cache para uso offline; `dados.json` sempre da rede quando houver |
 | `manifest.webmanifest`, `icons/` | instalação no celular |
 | `ferramentas/` | referência da criptografia e gerador de dados de teste |
 | `dados.json` | **gerado pelo MAPI — não editar** |
+
+## Acesso das pessoas
+
+Pedir, aprovar, remover e definir chaves é no MAPI (Magic → NS Painel), não aqui.
+Acesso removido: na publicação seguinte o app da pessoa apaga a chave e os dados do aparelho.
 
 ## Visão do MAPI (app dentro do MAPI, sem login)
 
@@ -101,10 +111,12 @@ e recebe o TXT do MAPI por `postMessage`:
 - o app manda `{tipo: 'co-painel:pronto', versao}` para a janela pai;
 - o MAPI responde `{tipo: 'co-painel:dados', texto, publicadoEm, origem}` (ou `{erro}`), e o app só
   aceita mensagem vinda da própria janela pai.
+- na mesma mensagem o MAPI pode mandar o campo opcional `sistemas` (texto de problemas sistêmicos); o app só o mantém na memória.
 Fora de um iframe, `?mapi` não muda nada: o login continua obrigatório. Não remova essas travas,
 e não mude os nomes das mensagens sem mudar `static/js/ns_painel.js` no MAPI junto.
 
-## Acesso das pessoas
+## Ponto de retorno
 
-Pedir, aprovar, remover e definir chaves é no MAPI (Magic → NS Painel), não aqui.
-Acesso removido: na publicação seguinte o app da pessoa apaga a chave e os dados do aparelho.
+A branch `rollback-v3.6.0` guarda o app antes dos problemas sistêmicos (3.7.x). Para voltar: restaurar na `main`
+os arquivos dessa branch (um commit novo, sem reescrever o histórico). O `dados.json` que traz o campo
+`sistemas` continua válido na 3.6.0, que simplesmente o ignora.

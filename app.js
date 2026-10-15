@@ -1,9 +1,11 @@
 /* NS Painel — app (v3.2: dados criptografados publicados pelo MAPI, com acesso aprovado) */
 (function () {
   'use strict';
-  const APP_VERSION = '3.6.0';
+  const APP_VERSION = '3.7.3';
   const P = window.NSData;
   const K = window.NSCripto;
+  // Problemas sistêmicos (sistemas.js): só com a mesma versão do app (evita misturar arquivos de versões diferentes)
+  const SIS = window.NSSistemas && window.NSSistemas.versao === APP_VERSION ? window.NSSistemas : null;
   const $ = s => document.querySelector(s);
   const main = $('#main');
   $('#ver').textContent = 'v' + APP_VERSION;
@@ -58,25 +60,53 @@
   // da janela que contém o app.
   const MODO_MAPI = window.parent !== window && new URLSearchParams(location.search).has('mapi');
   let mapiInfo = null;     // {origem, erro} do último envio do MAPI
-  let modo = (() => { try { const m = localStorage.getItem('ns-modo'); return ['DIA', 'SEMANA', 'MES'].includes(m) ? m : 'DIA'; } catch (e) { return 'DIA'; } })();
+  let modo = 'DIA';   // o app sempre abre no modo Dia (a troca para Semana/Mês vale só enquanto ele está aberto)
+  if (!MODO_MAPI) try { localStorage.removeItem('ns-modo'); } catch (e) {}   // limpa o modo que versões anteriores guardavam
 
   async function reload() {
-    snaps = (await dbAll()).sort((a, b) => (b.dataRef || '').localeCompare(a.dataRef || '') || b.id - a.id);
+    snaps = (await dbAll()).filter(s => s.id !== SIS_ID).sort((a, b) => (b.dataRef || '').localeCompare(a.dataRef || '') || b.id - a.id);
   }
   // O painel mostra SOMENTE o TXT mais recente (snaps[0]), exatamente como ele está:
   // nada de completar com períodos de arquivos anteriores (eles ficam só no Histórico).
-  // Meta definida pela coordenação: 90% (o META_NS do arquivo é ignorado). Situação recalculada:
-  // Meta atingida ≥ 90% · Em atenção ≥ 70% · Crítico < 70%
-  const META = 0.9;
+  // Meta: vem da coluna META_NS de cada linha (cada segmento/período pode ter a sua; mudou no select,
+  // muda no app). Só se o arquivo não trouxer META_NS vale 90%. Situação recalculada pela meta da linha:
+  // Meta atingida ≥ meta · Em atenção ≥ 70% · Crítico < 70%
+  const META_PADRAO = 0.9;
+  const metaDe = r => r && r.meta > 0 && r.meta <= 1 ? r.meta : META_PADRAO;
+  const fmtMeta = m => (Math.round(m * 1000 + 1e-9) / 10).toFixed(1).replace('.', ',').replace(/,0$/, '') + '%';
   // situação pelo NS exibido (89,96% aparece 90,0% → Meta atingida, distância 0,0)
-  const situacao = ns => { if (ns == null) return null; const v = Math.round(ns * 1000 + 1e-9) / 10; return v >= META * 100 ? 'VERDE' : v >= 70 ? 'AMARELO' : 'VERMELHO'; };
+  const situacao = (ns, meta = META_PADRAO) => { if (ns == null) return null; const v = Math.round(ns * 1000 + 1e-9) / 10, m = Math.round(meta * 1000 + 1e-9) / 10; return v >= m ? 'VERDE' : v >= 70 ? 'AMARELO' : 'VERMELHO'; };
+  // Segmentos (B2C, COE…): cada um com o seu tempo de corte e a sua base do NS, lidos do TXT.
+  // Arquivo antigo (sem SEGMENTO) = B2C, 5 min, NS ÷ atendidas.
+  const segDe = r => r.segmento || 'B2C';
+  const corteDe = r => r.corte || 5;
+  // NS exato para exibir e comparar (evita arredondar duas vezes: 1.802 ÷ 2.414 = 74,648% → 74,6%;
+  // pelo NS de 4 casas 0,7465 sairia 74,7%). B2C: no corte ÷ atendidas · COE: no corte ÷ recebidas.
+  const nsDe = r => { const den = r.base === 'RECEBIDAS' ? r.volume : r.total; return den > 0 ? r.ate / den : null; };
+  let segmento = (() => { try { return localStorage.getItem('ns-segmento') || 'B2C'; } catch (e) { return 'B2C'; } })();
+  // segmentos do arquivo atual, B2C primeiro
+  function segmentosDisp() {
+    const atual = snaps[0]; if (!atual) return [];
+    const l = [...new Set(atual.rows.map(segDe))];
+    return l.sort((a, b) => (b === 'B2C') - (a === 'B2C'));
+  }
+  function segAtual() { const l = segmentosDisp(); return l.includes(segmento) ? segmento : (l[0] || 'B2C'); }
+  function corteAtual() { const sg = segAtual(), r = snaps[0] && snaps[0].rows.find(x => segDe(x) === sg); return r ? corteDe(r) : 5; }
   function periodos() {
     const map = new Map();
     const atual = snaps[0];
     if (!atual) return map;
-    // NS exato (ATE_5_MIN ÷ TOTAL_ATENDIDAS) para exibir e comparar: evita arredondar duas vezes
-    // (ex.: 1.802 ÷ 2.414 = 74,648% → 74,6%; pelo NS de 4 casas 0,7465 sairia 74,7%)
-    for (const r of atual.rows) { const ns = r.total > 0 ? r.ate / r.total : null; map.set(r.ordem, { ...r, ns, meta: META, status: situacao(ns) }); }
+    const sg = segAtual();
+    for (const r of atual.rows) {
+      if (segDe(r) !== sg || r.semDados || r.volume === 0) continue;   // período sem chamadas não aparece
+      const ns = nsDe(r), meta = metaDe(r); map.set(r.ordem, { ...r, ns, meta, status: situacao(ns, meta) });
+    }
+    return map;
+  }
+  // todos os segmentos (para conferir mudanças em períodos fechados ao importar)
+  function todosPeriodos() {
+    const map = new Map(); const atual = snaps[0]; if (!atual) return map;
+    for (const r of atual.rows) map.set(P.chave(r), r);
     return map;
   }
 
@@ -119,18 +149,24 @@
     if (MODO_MAPI) {
       $('#nav').hidden = true; $('#bShare').hidden = true;
       if (!snaps.length) {
+        $('#bSeg').hidden = true; fecharMenuSeg();
         main.classList.remove('modo-painel');
         main.innerHTML = mapiInfo && mapiInfo.erro
           ? `<div class="card"><div class="banner bad">${esc(mapiInfo.erro)}</div></div>`
           : '<div class="card empty"><p>Carregando os dados pelo MAPI…</p></div>';
         return;
       }
-      view = 'painel'; main.classList.add('modo-painel'); renderPainel(); return;
+      view = 'painel'; main.classList.add('modo-painel');
+      $('#bSeg').hidden = false; $('#segNome').textContent = segAtual(); fecharMenuSeg();
+      renderPainel(); return;
     }
     $('#nav').hidden = !cred;
-    if (!cred) { $('#bShare').hidden = true; main.classList.remove('modo-painel'); renderLogin(); return; }
+    if (!cred) { $('#bShare').hidden = true; $('#bSeg').hidden = true; fecharMenuSeg(); main.classList.remove('modo-painel'); renderLogin(); return; }
     main.classList.toggle('modo-painel', view === 'painel');
     $('#bShare').hidden = !(view === 'painel' && snaps.length);
+    $('#bSeg').hidden = !(view === 'painel' && snaps.length);
+    $('#segNome').textContent = segAtual();
+    fecharMenuSeg();
     if (view === 'painel') renderPainel();
     else if (view === 'dados') preview ? renderPreview() : renderDados();
     else renderHist();
@@ -161,6 +197,7 @@
       if (e.code === 'sem_acesso' || e.code === 'codigo') { await encerrarAcesso(e.message); return; }
       pubStatus = { estado: 'erro', msg: e.message, em: Date.now() }; return;
     }
+    await sistemasDoPacote(b.pacote).catch(() => {});
     const { text } = P.decode(bytes);
     const pr = P.parse(text);
     const lm = b.lm || (b.pacote.gerado_em ? Date.parse(b.pacote.gerado_em) : null);
@@ -184,6 +221,7 @@
   async function encerrarAcesso(motivo) {
     try { await K.apagarCred(); } catch (e) {}
     try { for (const s of snaps) await dbDel(s.id); } catch (e) {}
+    await apagarSistemas();
     cred = null; snaps = []; preview = null; pubStatus = null;
     loginMsg = motivo || '';
     render();
@@ -233,6 +271,7 @@
             pacoteLogin.lm || (pacoteLogin.pacote.gerado_em ? Date.parse(pacoteLogin.pacote.gerado_em) : null)));
           await reload();
         }
+        await sistemasDoPacote(pacoteLogin.pacote).catch(() => {});
         pacoteLogin = null;
         toast('Acesso liberado neste aparelho ✓');
         go(snaps.length ? 'painel' : 'dados');
@@ -251,8 +290,80 @@
       rows: pr.rows.map(r => ({
         ordem: r.ordem, tipo: r.tipo, periodo: r.periodo, inicio: r.inicio, fim: r.fim, dias: r.dias, diasPeriodo: r.diasPeriodo,
         completo: r.completo, volume: r.volume, total: r.total, ate: r.ate, ns: r.ns, meta: r.meta, status: r.status, extras: r.extras,
+        segmento: r.segmento, corte: r.corte, base: r.base, semDados: !!r.semDados,
       })),
+      segmentos: pr.segmentos,
     };
+  }
+
+  // ---------------- Problemas sistêmicos (campo "sistemas" do dados.json) ----------------
+  // O TXT de sistemas fica guardado no aparelho (registro "sistemas" do banco) para abrir sem internet,
+  // e é apagado na saída ou quando o acesso é removido. Sem o campo no dados.json: o card some.
+  // TXT com erro em todas as linhas: fica o último válido, com aviso.
+  const SIS_ID = 'sistemas';
+  let sisDados = null;     // resultado de NSSistemas.ler
+  let sisHash = null, sisAviso = '';
+  async function carregarSistemasSalvos() {
+    if (!SIS) return;
+    try { const r = await dbGet(SIS_ID); if (r && r.texto) { const d = SIS.ler(r.texto); if (d.itens.length) { sisDados = d; sisHash = r.hash; } } } catch (e) {}
+  }
+  // texto = conteúdo novo; null = não há arquivo publicado (apaga o guardado)
+  async function aplicarSistemas(texto) {
+    if (!SIS) return false;
+    if (texto == null) {
+      const tinha = !!(sisDados || sisAviso);
+      sisDados = null; sisHash = null; sisAviso = '';
+      try { await dbDel(SIS_ID); } catch (e) {}
+      return tinha;
+    }
+    const h = P.hash(texto);
+    if (h === sisHash) return false;
+    const d = SIS.ler(texto);
+    if (!d.itens.length) { const a = 'O arquivo de sistemas publicado tem erros e foi ignorado' + (sisDados ? ' — mostrando o último válido' : '') + ': ' + d.erros.slice(0, 3).join(' · '); const mudou = a !== sisAviso; sisAviso = a; return mudou; }
+    try {
+      await dbPut({ id: SIS_ID, texto, hash: h, em: Date.now() });
+      const back = await dbGet(SIS_ID);
+      if (!back || back.texto !== texto) throw new Error('conferência');
+    } catch (e) { /* não gravou: mostra assim mesmo; na próxima abertura busca de novo */ }
+    sisDados = d; sisHash = h; sisAviso = '';
+    return true;
+  }
+  // Na versão da empresa os sistemas vêm no próprio dados.json (campo opcional "sistemas", cifrado com a
+  // mesma chave dos dados). Sem o campo, o card não aparece. Falha só nos sistemas nunca bloqueia o NS.
+  async function sistemasDoPacote(pacote) {
+    if (!SIS || !cred) return;
+    let bytes, mudou;
+    try { bytes = await K.abrirSistemas(pacote, cred); }
+    catch (e) {
+      if (e.code === 'sem_acesso' || e.code === 'codigo') return;   // tratado na abertura dos dados
+      const a = 'Os dados de sistemas publicados estão corrompidos e foram ignorados' + (sisDados ? ' — mostrando os últimos válidos.' : '.');
+      mudou = a !== sisAviso; sisAviso = a;
+      if (mudou) redesenharPainel();
+      return;
+    }
+    mudou = await aplicarSistemas(bytes ? P.decode(bytes).text : null);
+    if (mudou) redesenharPainel();
+  }
+  // Visão do MAPI: o texto de sistemas chega na mensagem; só fica na memória (nada vai para o IndexedDB)
+  function sistemasDoMapi(texto) {
+    sisDados = null; sisHash = null; sisAviso = '';
+    if (!SIS || texto == null || String(texto).trim() === '') return;
+    const d = SIS.ler(String(texto));
+    if (d.itens.length) { sisDados = d; sisHash = P.hash(String(texto)); }
+    else sisAviso = 'O arquivo de sistemas tem erros e foi ignorado: ' + d.erros.slice(0, 3).join(' · ');
+  }
+  // saída / acesso removido: os sistemas guardados no aparelho são apagados junto com o resto
+  async function apagarSistemas() {
+    sisDados = null; sisHash = null; sisAviso = '';
+    try { await dbDel(SIS_ID); } catch (e) {}
+  }
+  function redesenharPainel() {
+    if (view !== 'painel' || preview || !snaps.length) return;
+    const y = window.scrollY; renderPainel(); window.scrollTo(0, y);
+  }
+  function cardSistemas(t, items) {
+    if (!SIS || (!sisDados && !sisAviso)) return '';
+    return SIS.card(sisDados, items, { modo: t, sel, filtro: t === 'DIA' && filtroDia != null ? WD_PLURAL[filtroDia] : null, erros: sisDados ? sisDados.erros : [], avisos: sisDados ? sisDados.avisos : [], aviso: sisAviso });
   }
 
   // ---------------- Dados (importação) ----------------
@@ -299,7 +410,7 @@
   function abrirPrevia(text, arquivo, encoding) {
     const pr = P.parse(text);
     const h = P.hash(text);
-    preview = { pr, hash: h, arquivo, encoding, mudancas: P.compara(pr.rows, periodos()), dup: snaps.find(s => s.hash === h) || null, aceito: false };
+    preview = { pr, hash: h, arquivo, encoding, mudancas: P.compara(pr.rows, todosPeriodos()), dup: snaps.find(s => s.hash === h) || null, aceito: false };
     view = 'dados'; renderPreview(); window.scrollTo(0, 0);
   }
   const msgLi = m => `<li>${m.linha ? `<b>Linha ${m.linha}</b> · ` : ''}${m.col ? `<b>${esc(m.col)}</b>: ` : ''}${esc(m.msg)}</li>`;
@@ -307,26 +418,29 @@
   function renderPreview() {
     const { pr, mudancas, dup } = preview;
     const bloqueia = pr.erros.length > 0 || !!dup || (mudancas.length > 0 && !preview.aceito);
-    const tabelaTipo = t => {
-      const rs = pr.rows.filter(r => r.tipo === t); if (!rs.length) return '';
-      return `<h3 class="sub">${NOME[t]} (${rs.length})</h3><div style="overflow-x:auto"><table class="conf" style="cursor:default">
+    const segs = pr.segmentos || [];
+    const multi = segs.length > 1;
+    const tabelaTipo = (t, sg) => {
+      const rs = pr.rows.filter(r => r.tipo === t && (!sg || r.segmento === sg) && !r.semDados); if (!rs.length) return '';
+      return `<h3 class="sub">${multi ? esc(sg) + ' · ' : ''}${NOME[t]} (${rs.length})</h3><div style="overflow-x:auto"><table class="conf" style="cursor:default">
         <thead><tr><th>PERÍODO</th><th>DIAS</th><th>RECEBIDAS</th><th>NS</th></tr></thead><tbody>
         ${rs.map(r => `<tr style="cursor:default"><td>${esc(P.rotulo(r))}</td><td class="${r.completo ? '' : 'dias-aberto'}">${r.tipo === 'DIA' ? '1' : r.completo ? r.dias : r.dias + '/' + r.diasPeriodo}</td>
-          <td>${fmtInt(r.volume)}</td><td><span class="pill ${situacao(r.total > 0 ? r.ate / r.total : null)}">${fmtPct(r.total > 0 ? r.ate / r.total : null)}</span></td></tr>`).join('')}
+          <td>${fmtInt(r.volume)}</td><td><span class="pill ${situacao(nsDe(r), metaDe(r))}">${fmtPct(nsDe(r))}</span></td></tr>`).join('')}
         </tbody></table></div>`;
     };
     main.innerHTML = `
       <div class="card"><h2>Conferir importação</h2>
         <div class="small muted">${esc(preview.arquivo)} · ${esc(pr.formato || '?')}${preview.encoding ? ' · ' + preview.encoding : ''}</div>
-        ${pr.rows.length ? `<div class="chips"><span class="chip">${pr.resumo.MES} meses</span><span class="chip">${pr.resumo.SEMANA} semanas</span><span class="chip">${pr.resumo.DIA} dias</span><span class="chip">dados até ${fmtData(pr.dataRef)}</span></div>` : ''}
+        ${pr.rows.length && !multi ? `<div class="chips"><span class="chip">${pr.resumo.MES} meses</span><span class="chip">${pr.resumo.SEMANA} semanas</span><span class="chip">${pr.resumo.DIA} dias</span><span class="chip">dados até ${fmtData(pr.dataRef)}</span></div>` : ''}
+        ${pr.rows.length && multi ? segs.map(g => `<div class="chips"><span class="chip"><b>${esc(g.nome)}</b> · ${g.corte} min</span><span class="chip">${g.resumo.MES} meses</span><span class="chip">${g.resumo.SEMANA} semanas</span><span class="chip">${g.resumo.DIA} dias</span>${g.semDados ? `<span class="chip">${g.semDados} sem dados (não aparece${g.semDados > 1 ? 'm' : ''})</span>` : ''}</div>`).join('') + `<div class="chips"><span class="chip">dados até ${fmtData(pr.dataRef)}</span></div>` : ''}
         ${pr.erros.length ? `<div class="banner bad" style="margin-top:8px"><b>${pr.erros.length} erro(s) — corrija o arquivo e importe de novo.</b> Nada foi salvo.</div><ul class="list-msg err">${pr.erros.map(msgLi).join('')}</ul>` : ''}
         ${dup ? `<div class="banner info" style="margin-top:8px">Este arquivo já foi importado em ${fmtDT(dup.id)} — não há nada novo para salvar.</div>` : ''}
         ${!pr.erros.length && !dup ? `<div class="banner ok" style="margin-top:8px"><b>Arquivo conferido.</b> ${pr.rows.length} linhas válidas, NS conferido em todas${pr.info.length ? ' · ' + esc(pr.info.join(' ')) : '.'}</div>` : ''}
         ${pr.colunasExtras.length ? `<div class="banner info small">Colunas novas encontradas: <b>${pr.colunasExtras.map(esc).join(', ')}</b>. Ficam guardadas e aparecem no detalhe de cada período.</div>` : ''}
         ${pr.avisos.length ? `<h3 class="sub">Avisos (não impedem salvar)</h3><ul class="list-msg warn">${pr.avisos.map(msgLi).join('')}</ul>` : ''}
-        ${mudancas.length ? `<h3 class="sub">Mudou em período fechado</h3><ul class="list-msg warn">${mudancas.map(m => `<li><b>${esc(m.periodo)}</b> · ${m.col}: salvo ${m.antes} → arquivo ${m.agora}</li>`).join('')}</ul>
+        ${mudancas.length ? `<h3 class="sub">Mudou em período fechado</h3><ul class="list-msg warn">${mudancas.map(m => `<li><b>${multi ? esc(m.segmento) + ' · ' : ''}${esc(m.periodo)}</b> · ${m.col}: salvo ${m.antes} → arquivo ${m.agora}</li>`).join('')}</ul>
           <label class="chk"><input type="checkbox" id="chkMud" ${preview.aceito ? 'checked' : ''}> Confirmo que esses valores mudaram na origem e o arquivo novo está certo.</label>` : ''}
-        ${tabelaTipo('MES')}${tabelaTipo('SEMANA')}${tabelaTipo('DIA')}
+        ${(multi ? segs.map(g => g.nome) : [null]).map(sg => tabelaTipo('MES', sg) + tabelaTipo('SEMANA', sg) + tabelaTipo('DIA', sg)).join('')}
       </div>
       <div class="row">
         <button class="btn sec" id="bDesc">${pr.erros.length || dup ? 'Voltar' : 'Descartar'}</button>
@@ -368,6 +482,39 @@
   const WD_PLURAL = ['domingos', 'segundas', 'terças', 'quartas', 'quintas', 'sextas', 'sábados'];
   const WD_ULTIMO = ['Último domingo', 'Última segunda', 'Última terça', 'Última quarta', 'Última quinta', 'Última sexta', 'Último sábado'];
   const WD_ANTERIOR = ['o domingo anterior', 'a segunda anterior', 'a terça anterior', 'a quarta anterior', 'a quinta anterior', 'a sexta anterior', 'o sábado anterior'];
+  // ---- segmento (menu flutuante no topo) ----
+  function setSegmento(sg) {
+    fecharMenuSeg();
+    if (sg === segAtual()) return;
+    segmento = sg; sel = null;
+    if (!MODO_MAPI) try { localStorage.setItem('ns-segmento', sg); } catch (e) {}
+    $('#segNome').textContent = segAtual();
+    const y = window.scrollY;
+    renderPainel();
+    window.scrollTo(0, y);
+  }
+  function fecharMenuSeg() {
+    const m = document.querySelector('.segmenu'); if (m) m.remove();
+    const b = $('#bSeg'); if (b) b.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('pointerdown', foraMenuSeg, true);
+  }
+  function foraMenuSeg(e) { if (!e.target.closest('.segmenu') && !e.target.closest('#bSeg')) fecharMenuSeg(); }
+  function abrirMenuSeg() {
+    if (document.querySelector('.segmenu')) { fecharMenuSeg(); return; }
+    const atual = segAtual();
+    const corte = sg => { const r = snaps[0] && snaps[0].rows.find(x => segDe(x) === sg); return r ? corteDe(r) : 5; };
+    const m = document.createElement('div');
+    m.className = 'segmenu'; m.setAttribute('role', 'menu');
+    m.style.top = Math.round($('header').getBoundingClientRect().bottom + 6) + 'px';
+    m.innerHTML = segmentosDisp().map(sg => `<button role="menuitemradio" aria-checked="${sg === atual}" class="${sg === atual ? 'on' : ''}" data-seg="${esc(sg)}"><span>${esc(sg)}<small>NS ${corte(sg)} min</small></span><span class="ck" aria-hidden="true">✓</span></button>`).join('');
+    document.body.appendChild(m);
+    $('#bSeg').setAttribute('aria-expanded', 'true');
+    m.querySelectorAll('button').forEach(b => b.onclick = () => setSegmento(b.dataset.seg));
+    // tocar fora fecha (o pointerdown do toque que abriu já passou: pode registrar na hora)
+    document.addEventListener('pointerdown', foraMenuSeg, true);
+  }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharMenuSeg(); });
+
   function setFiltroDia(w) {
     filtroDia = w; sel = null;
     const y = window.scrollY;
@@ -381,7 +528,6 @@
   function setModo(m, dir) {
     if (dir == null) dir = Math.sign(ORDEM_MODOS.indexOf(m) - ORDEM_MODOS.indexOf(modo)) || 1;
     modo = m; sel = null;
-    try { localStorage.setItem('ns-modo', m); } catch (e) {}
     const y = window.scrollY;
     renderPainel();
     window.scrollTo(0, y);
@@ -541,6 +687,7 @@
     main.querySelectorAll('.wdf button[data-wd]').forEach(b => b.onclick = () => { const w = +b.dataset.wd; setFiltroDia(filtroDia === w ? null : w); });
     if ($('#bWdx')) $('#bWdx').onclick = () => setFiltroDia(null);
     bindTaps(items);
+    if (SIS) SIS.ligar(main, { dados: sisDados, items, rerender: redesenharPainel, toggleSel });
   }
 
   function painelTipo(t, items, serie, all) {
@@ -548,7 +695,6 @@
     const cur = selRow || items[items.length - 1];
     const ic = serie.indexOf(cur);
     const prev = ic > 0 ? serie[ic - 1] : null;
-    const meta = META;
     const dPP = prev && cur.ns != null && prev.ns != null ? difPP(cur.ns, prev.ns) : null;
     const kc = selRow ? 'kpi ksel' : 'kpi';
     // 4 cards no mesmo padrão: título · valor · comparação com o período anterior
@@ -557,9 +703,9 @@
     const dVol = varRecebidas(cur, prev);
     const sVol = !prev ? 'sem período anterior' : dVol == null ? '<span class="parc">parcial</span> · sem variação' : `${pc(dVol / 100)}${vsPrev}`;
     const sNs = dPP == null ? 'sem período anterior' : `${pp(dPP)}${vsPrev}`;
-    const dMeta = cur.ns == null ? null : difPP(cur.ns, META);
+    const dMeta = cur.ns == null ? null : difPP(cur.ns, cur.meta);
     const k = `
-        <div class="${kc} kns"><div class="l">NS 5 min</div><div class="v">${fmtPct(cur.ns)}</div><div class="s">${sNs}</div></div>
+        <div class="${kc} kns"><div class="l">NS ${corteAtual()} min</div><div class="v">${fmtPct(cur.ns)}</div><div class="s">${sNs}</div></div>
         <div class="${kc} kvol"><div class="l">Chamadas recebidas</div><div class="v">${fmtInt(cur.volume)}</div><div class="s">${sVol}</div></div>
         <div class="${kc} kdist"><div class="l">Distância da meta</div><div class="v">${dMeta == null ? '—' : pp(dMeta)}</div><div class="s">${cur.status ? `<span class="pill ${cur.status}">${stNome(cur.status)}</span>` : ''}</div></div>
         <div class="${kc} kper"><div class="l">${t === 'DIA' && filtroDia != null && !selRow ? WD_ULTIMO[filtroDia] : tituloPeriodo(t, !!selRow)}</div><div class="v">${esc(valorPeriodo(cur))}</div><div class="s">${situacaoPeriodo(cur)}</div></div>`;
@@ -571,7 +717,7 @@
         ${[0, 1, 2, 3, 4, 5, 6].map(w => `<button data-wd="${w}" class="${w === 0 ? 'dom' : ''}${fd === w ? ' on' : ''}" aria-pressed="${fd === w}" ${diasDisp.has(w) ? '' : 'disabled'}>${SEMANA_ABR[w]}</button>`).join('')}
         ${fd != null ? '<button class="wdx" id="bWdx" aria-label="Remover filtro e voltar aos dias corridos">✕</button>' : ''}
       </div>`;
-    const legNS = `<div class="legend"><span><i style="background:var(--verdeS)"></i>Meta atingida</span><span><i style="background:var(--amareloS)"></i>Em atenção</span><span><i style="background:var(--vermelhoS)"></i>Crítico</span>${t === 'DIA' ? '' : `<span><i style="background:repeating-linear-gradient(45deg,var(--p300) 0 3px,transparent 3px 6px)"></i>${t === 'MES' ? 'mês aberto' : 'semana aberta'}</span>`}<span><i class="ln dash"></i>meta ${fmtPct(META).replace(',0', '')}</span></div>`;
+    const legNS = `<div class="legend"><span><i style="background:var(--verdeS)"></i>Meta atingida</span><span><i style="background:var(--amareloS)"></i>Em atenção</span><span><i style="background:var(--vermelhoS)"></i>Crítico</span>${t === 'DIA' ? '' : `<span><i style="background:repeating-linear-gradient(45deg,var(--p300) 0 3px,transparent 3px 6px)"></i>${t === 'MES' ? 'mês aberto' : 'semana aberta'}</span>`}<span><i class="ln dash"></i>meta ${fmtMeta(cur.meta)}</span></div>`;
     const cab = t === 'DIA' ? 'DIA' : t === 'SEMANA' ? 'SEMANA' : 'MÊS';
     const dica = 'Toque numa coluna para selecionar · toque de novo para limpar.';
     const cap = selRow ? esc(detalhe(selRow)) : fd != null ? `Só ${WD_PLURAL[fd]} · ${items.length} mais recentes. ${dica}` : dica;
@@ -579,10 +725,11 @@
       <div class="kpis">${k}</div>
       ${filtro}
       <div class="card chart"><h2>${t === 'DIA' ? (fd != null ? `Chamadas recebidas e NS · ${WD_PLURAL[fd]}` : 'Chamadas recebidas e NS por dia') : t === 'SEMANA' ? 'Chamadas recebidas e NS por semana' : 'Chamadas recebidas e NS por mês'}</h2>${chartVol(items, t)}
-        <div class="legend"><span><i style="background:var(--barR)"></i>chamadas recebidas</span><span><i class="ln mk" style="border-color:var(--laranjaL)"></i>NS 5 min (eixo à direita)</span></div>
+        <div class="legend"><span><i style="background:var(--barR)"></i>chamadas recebidas</span><span><i class="ln mk" style="border-color:var(--laranjaL)"></i>NS ${corteAtual()} min (eixo à direita)</span></div>
         <div class="cap${selRow ? ' capsel' : ''}" id="cap2">${selRow ? cap : (t === 'DIA' ? cap : `Hachurado = ${t === 'MES' ? 'mês' : 'semana'} em aberto (total parcial). ` + dica)}</div></div>
       <div class="card chart"><h2>${tituloNS}</h2>${chartNs(items, t)}${legNS}
         <div class="cap${selRow ? ' capsel' : ''}" id="cap1">${cap}</div></div>
+      ${cardSistemas(t, items)}
       <div class="card"><h2>${t === 'DIA' ? (fd != null ? Cap(WD_PLURAL[fd]) : 'Dias') : t === 'SEMANA' ? 'Semanas' : 'Meses'}</h2><div style="overflow-x:auto"><table class="conf tsel">
         <thead><tr><th>${cab}</th>${t === 'DIA' ? '' : '<th>DIAS</th>'}<th>RECEB.</th><th>VAR.</th><th>NS</th><th>VAR. NS</th></tr></thead><tbody>
         ${[...items].reverse().map(r => { const ant = serie[serie.indexOf(r) - 1]; return `<tr data-ordem="${r.ordem}" class="${r.ordem === sel ? 'sel' : ''}" aria-selected="${r.ordem === sel}"><td>${esc(P.rotulo(r, t !== 'DIA'))}</td>${t === 'DIA' ? '' : `<td class="${r.completo ? '' : 'dias-aberto'}">${r.completo ? r.dias : r.dias + '/' + r.diasPeriodo}</td>`}
@@ -632,12 +779,17 @@
     return `<path d="M${x},${yBase} V${yTop + r} A${r},${r} 0 0 1 ${x + r},${yTop} H${x + w - r} A${r},${r} 0 0 1 ${x + w},${yTop + r} V${yBase} Z" fill="${fill}" ${extra}/>`;
   }
   const largura = bw => Math.max(8, Math.min(28, bw * 0.56));
+  // linha tracejada da meta: um trecho por coluna, na meta daquela coluna (meta igual = linha reta contínua)
+  function linhaMeta(items, x0, bw, y, cor, dash, sw) {
+    const segs = []; let ini = 0;
+    for (let i = 1; i <= items.length; i++) if (i === items.length || metaDe(items[i]) !== metaDe(items[ini])) { segs.push([ini, i, metaDe(items[ini])]); ini = i; }
+    return segs.map(([a, b, m]) => `<line class="metaln" x1="${(x0 + a * bw).toFixed(1)}" x2="${(x0 + b * bw).toFixed(1)}" y1="${y(m).toFixed(1)}" y2="${y(m).toFixed(1)}" stroke="${cor}" stroke-dasharray="${dash}" stroke-width="${sw}"/>`).join('');
+  }
   function chartNs(items, t) {
     const mensal = t !== 'DIA';
     const W = 360, H = 220, L = 22, R = 6, T = 24, B = 40, iw = W - L - R, ih = H - T - B;
-    const meta = META;
     const vals = items.map(d => d.ns ?? 0);
-    const lo = Math.max(0, Math.floor((Math.min(...vals, meta) - 0.05) * 10) / 10), hi = 1;
+    const lo = Math.max(0, Math.floor((Math.min(...vals, ...items.map(metaDe)) - 0.05) * 10) / 10), hi = 1;
     const y = v => T + ih - (v - lo) / (hi - lo) * ih;
     const bw = iw / items.length;
     const w = largura(bw);
@@ -652,7 +804,7 @@
     const hits = items.map((d, i) => `<rect class="hit" data-i="${i}" x="${L + i * bw}" y="${T - 14}" width="${bw}" height="${ih + B + 14}" fill="transparent"/>`).join('');
     return `<svg viewBox="0 0 ${W} ${H}" id="ch1" role="img" aria-label="NS">
       <defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="3" height="6" fill="#fff" fill-opacity=".5"/></pattern></defs>
-      ${faixaSel(items, L, bw, T, ih + B)}${g}${bars}<line x1="${L}" x2="${W - R}" y1="${y(meta)}" y2="${y(meta)}" stroke="${css('--ink2')}" stroke-dasharray="4 3" stroke-width="1.5"/>
+      ${faixaSel(items, L, bw, T, ih + B)}${g}${bars}${linhaMeta(items, L, bw, y, css('--ink2'), '4 3', 1.5)}
       ${vl}${xLabels(items, t, L, bw, H)}${hits}</svg>`;
   }
   // Chamadas recebidas (barras com o total, eixo esquerdo) + NS 5 min (linha com marcadores e rótulo, eixo direito)
@@ -664,8 +816,7 @@
     const nice = Math.pow(10, Math.floor(Math.log10(max))); const stepV = max / nice > 5 ? nice * 2 : max / nice > 2 ? nice : nice / 2;
     const y = v => T + ih - v / max * ih;
     // eixo direito do NS: mesma faixa usada no gráfico de NS
-    const meta = META;
-    const lo = Math.max(0, Math.floor((Math.min(...items.map(d => d.ns ?? 1), meta) - 0.05) * 10) / 10), hi = 1;
+    const lo = Math.max(0, Math.floor((Math.min(...items.map(d => d.ns ?? 1), ...items.map(metaDe)) - 0.05) * 10) / 10), hi = 1;
     const yn = v => T + ih - (v - lo) / (hi - lo) * ih;
     const bw = iw / items.length;
     const w = largura(bw);
@@ -696,7 +847,15 @@
       const [x, py, d] = p, sl = d.ordem === sel, rr = sl ? 5 : 3.6, f = sl ? fsN + .5 : fsN;
       const txt = p1(d.ns), hw = txt.length * f * 0.3 + 1;
       const cima = py - rr - 2.5 - f * 0.22, baixo = py + rr + 2.5 + f * 0.92, lado = hw + rr + 2.5;
-      const cands = [[x, cima, 0], [x, baixo, 0.5], [x - lado, py - f * 0.2, 3], [x + lado, py - f * 0.2, 3], [x - lado, cima, 2], [x + lado, cima, 2], [x - lado, baixo, 2.5], [x + lado, baixo, 2.5]];
+      // posições: em cima, embaixo e ao lado; deslocamento horizontal de 0, meio ou um "lado" (menor = preferido),
+      // encostando na borda do gráfico quando passar dela
+      const cands = [];
+      for (const [b, pv] of [[cima, 0], [baixo, 0.5], [py - f * 0.2, 3]])
+        for (const [dx, ph] of [[0, 0], [-0.5, 1], [0.5, 1], [-1, 2], [1, 2]]) {
+          if (pv === 3 && dx === 0) continue;              // no meio da altura, só ao lado (senão cobre o marcador)
+          const cx = Math.min(Math.max(x + dx * lado, area[0] + hw), area[2] - hw);
+          cands.push([cx, b, pv + ph + Math.abs(cx - x) / lado * 0.5]);
+        }
       let best = null;
       for (const [cx, b, pref] of cands) {
         const bx = [cx - hw, b - f * 0.92, cx + hw, b + f * 0.22];
@@ -788,7 +947,7 @@
     const cur = dias[dias.length - 1], prev = dias.length > 1 ? dias[dias.length - 2] : null;
     const wd = r => { const [y, m, d] = r.inicio.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)).getUTCDay(); };
     const dPP = prev && cur.ns != null && prev.ns != null ? difPP(cur.ns, prev.ns) : null;
-    return { items, cur, prev, dPP, wd, meta: META, dataRef: snaps[0] && snaps[0].dataRef };
+    return { items, cur, prev, dPP, wd, meta: metaDe(cur), dataRef: snaps[0] && snaps[0].dataRef };
   }
   const ddmm = r => r.inicio.slice(8, 10) + '/' + r.inicio.slice(5, 7);
   const pct1 = v => p1(v) + '%';
@@ -827,7 +986,7 @@
   }
   function textoCompartilhar() {
     const c = conteudoMsg();
-    const L = ['📊 *Chamadas recebidas x NS (5 min)*'];
+    const L = [`📊 *Chamadas recebidas x NS (${corteAtual()} min) · ${segAtual()}*`];
     for (const b of c.blocos) {
       const lw = Math.max(...b.linhas.map(x => x.lab.length)), nw = Math.max(...b.linhas.map(x => x.num.length));
       L.push('', `*${b.titulo}*`, ...b.linhas.map(x => `▫️ ${x.lab.padEnd(lw)} → ${x.num.padStart(nw)} | *${x.ns}*`));
@@ -844,9 +1003,9 @@
     const thR = 'style="text-align:right;padding:4px 12px 4px 0;border-bottom:1px solid #D5BFE7;color:#642A90"';
     const td = 'style="padding:3px 12px 3px 0"', tdR = 'style="text-align:right;padding:3px 12px 3px 0"';
     let h = '<div style="font-family:Segoe UI,Arial,sans-serif;font-size:14px">';
-    h += '<p>📊 <b>Chamadas recebidas x NS (5 min)</b></p>';
+    h += `<p>📊 <b>Chamadas recebidas x NS (${corteAtual()} min) · ${esc(segAtual())}</b></p>`;
     for (const b of c.blocos) {
-      h += `<p><b>${esc(b.titulo)}</b></p><table style="border-collapse:collapse"><thead><tr><th ${th}>${esc(b.col)}</th><th ${thR}>Chamadas recebidas</th><th ${thR}>NS 5 min</th></tr></thead><tbody>`;
+      h += `<p><b>${esc(b.titulo)}</b></p><table style="border-collapse:collapse"><thead><tr><th ${th}>${esc(b.col)}</th><th ${thR}>Chamadas recebidas</th><th ${thR}>NS ${corteAtual()} min</th></tr></thead><tbody>`;
       for (const x of b.linhas) h += `<tr><td ${td}>${esc(x.lab)}</td><td ${tdR}>${esc(x.num)}</td><td ${tdR}><b style="color:${COR_TEAMS[x.status] || '#1F1530'}">${esc(x.ns)}</b></td></tr>`;
       h += '</tbody></table>';
     }
@@ -857,7 +1016,7 @@
   // versão em texto simples (para quem colar onde não há formatação)
   function textoSimples() {
     const c = conteudoMsg();
-    const L = ['📊 Chamadas recebidas x NS (5 min)'];
+    const L = [`📊 Chamadas recebidas x NS (${corteAtual()} min) · ${segAtual()}`];
     for (const b of c.blocos) {
       const lw = Math.max(...b.linhas.map(x => x.lab.length)), nw = Math.max(...b.linhas.map(x => x.num.length));
       L.push('', b.titulo, ...b.linhas.map(x => `▫️ ${x.lab.padEnd(lw)} → ${x.num.padStart(nw)} | ${x.ns}`));
@@ -893,7 +1052,7 @@
     const dCor = d.dPP == null || d.dPP === 0 ? PAL.ink2 : d.dPP > 0 ? PAL.up : PAL.down;
     // ---- gráfico ----
     const it = d.items, CX0 = 120, CX1 = 1000, CY0 = 720, CY1 = 1060;
-    const lo = Math.max(0, Math.floor((Math.min(...it.map(r => r.ns ?? 0), d.meta) - 0.05) * 10) / 10), hi = 1;
+    const lo = Math.max(0, Math.floor((Math.min(...it.map(r => r.ns ?? 0), ...it.map(metaDe)) - 0.05) * 10) / 10), hi = 1;
     const y = v => CY1 - (v - lo) / (hi - lo) * (CY1 - CY0);
     const bw = (CX1 - CX0) / it.length, w = Math.max(20, Math.min(64, bw * 0.56)), r = 8;
     let g = '';
@@ -905,7 +1064,7 @@
       return CY1 - yt <= 0 ? '' : `<path d="M${bx},${CY1} V${yt + rr} A${rr},${rr} 0 0 1 ${bx + rr},${yt} H${bx + w - rr} A${rr},${rr} 0 0 1 ${bx + w},${yt + rr} V${CY1} Z" fill="${PAL[x.status] || PAL.ink3}"/>`;
     }).join('');
     const vals = it.map((x, i) => x.ns == null ? '' : T(CX0 + i * bw + bw / 2, y(x.ns) - 14, 30, p1(x.ns), { w: 800, a: 'middle', halo: true }));
-    const meta = `<line x1="${CX0}" x2="${CX1}" y1="${y(d.meta)}" y2="${y(d.meta)}" stroke="${PAL.ink2}" stroke-width="3" stroke-dasharray="12 9"/>`;
+    const meta = linhaMeta(it, CX0, bw, y, PAL.ink2, '12 9', 3);
     const xl = it.map((x, i) => {
       const cx = CX0 + i * bw + bw / 2, dom = d.wd(x) === 0;
       return T(cx, CY1 + 44, 30, String(+x.inicio.slice(8, 10)), { w: 700, a: 'middle', f: dom ? PAL.dom : PAL.ink2 }) +
@@ -913,21 +1072,21 @@
     }).join('');
     const legItem = (x, cor, txt) => `<rect x="${x}" y="1173" width="22" height="22" rx="5" fill="${cor}"/>` + T(x + 32, 1192, 25, txt, { f: PAL.ink2 });
     const leg = legItem(96, PAL.VERDE, 'Meta atingida') + legItem(330, PAL.AMARELO, 'Em atenção') + legItem(540, PAL.VERMELHO, 'Crítico') +
-      `<line x1="700" x2="746" y1="1184" y2="1184" stroke="${PAL.ink2}" stroke-width="3" stroke-dasharray="10 7"/>` + T(758, 1192, 25, `meta ${pct1(d.meta).replace(',0%', '%')}`, { f: PAL.ink2 });
+      `<line x1="700" x2="746" y1="1184" y2="1184" stroke="${PAL.ink2}" stroke-width="3" stroke-dasharray="10 7"/>` + T(758, 1192, 25, `meta ${fmtMeta(d.meta)}`, { f: PAL.ink2 });
     const agora = new Date();
     const gerado = `Gerado em ${agora.toLocaleDateString('pt-BR')} às ${agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <defs><linearGradient id="hd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${PAL.p800}"/><stop offset=".6" stop-color="${PAL.p700}"/><stop offset="1" stop-color="${PAL.p500}"/></linearGradient></defs>
   <rect width="${W}" height="${H}" fill="${PAL.bg}"/>
   <rect width="${W}" height="200" fill="url(#hd)"/>
-  ${T(60, 92, 52, 'NS 5 min · B2C Suporte', { w: 800, f: '#FFFFFF' })}
+  ${T(60, 92, 52, `NS ${corteAtual()} min · ${segAtual()} Suporte`, { w: 800, f: '#FFFFFF' })}
   ${T(60, 146, 29, `Nível de serviço diário · dados até ${fmtData(d.dataRef || c.inicio)}`, { f: '#FFFFFF', op: .88 })}
   <rect x="48" y="236" width="984" height="300" rx="28" fill="${PAL.card}" stroke="${PAL.line}" stroke-width="2"/>
   ${T(92, 300, 30, `Último dia · ${P.rotulo(c)} · ${['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'][d.wd(c)]}`, { f: PAL.ink2 })}
   ${T(88, 418, 112, pct1(c.ns), { w: 800 })}
   <rect x="92" y="446" width="${pillW}" height="52" rx="26" fill="${pc[0]}"/>
   ${T(92 + pillW / 2, 481, 27, stT, { w: 700, f: pc[1], a: 'middle' })}
-  ${T(92 + pillW + 22, 481, 26, `meta ${pct1(d.meta).replace(',0%', '%')}`, { f: PAL.ink3 })}
+  ${T(92 + pillW + 22, 481, 26, `meta ${fmtMeta(d.meta)}`, { f: PAL.ink3 })}
   <line x1="600" x2="600" y1="276" y2="496" stroke="${PAL.line}" stroke-width="2"/>
   ${T(640, 300, 30, d.prev ? `vs ${P.rotulo(d.prev)}` : 'vs dia anterior', { f: PAL.ink2 })}
   ${T(636, 384, 66, d.dPP == null ? '—' : ppTxt(d.dPP), { w: 800, f: dCor })}
@@ -989,7 +1148,7 @@
       const ok = await copiarFormatado(html, simples);
       toast(ok ? 'Copiado ✓ Agora cole no Teams (Ctrl+V)' : 'Não consegui copiar — selecione a tabela e copie.', 4000);
     };
-    const nome = `ns-diario-${d.cur.inicio}.png`;
+    const nome = `ns-diario-${segAtual().toLowerCase()}-${d.cur.inicio}.png`;
     try {
       blob = await pngDeSvg(svgCompartilhar(d));   // gera antes do toque em Enviar (o celular exige o toque "fresco" para compartilhar)
       file = new File([blob], nome, { type: 'image/png' });
@@ -1054,7 +1213,7 @@
     bg.innerHTML = `<div class="sheet"><h3>Dados até ${fmtData(s.dataRef)}</h3>
       <div class="small muted">${esc(s.arquivo)} · ${s.origem} · recebido ${fmtDT(s.id)}${s.mudancasAceitas && s.mudancasAceitas.length ? ` · ${s.mudancasAceitas.length} alteração(ões) em período fechado confirmada(s)` : ''}</div>
       <table class="conf" style="cursor:default;margin-top:8px"><thead><tr><th>PERÍODO</th><th>DIAS</th><th>RECEBIDAS</th><th>NS</th></tr></thead><tbody>
-      ${s.rows.map(r => `<tr style="cursor:default"><td>${esc(P.rotulo(r, r.tipo === 'SEMANA'))}</td><td>${r.completo ? r.dias : r.dias + '/' + r.diasPeriodo}</td><td>${fmtInt(r.volume)}</td><td>${fmtPct(r.total > 0 ? r.ate / r.total : null)}</td></tr>`).join('')}
+      ${s.rows.filter(r => !r.semDados).map(r => `<tr style="cursor:default"><td>${new Set(s.rows.map(segDe)).size > 1 ? esc(segDe(r)) + ' · ' : ''}${esc(P.rotulo(r, r.tipo === 'SEMANA'))}</td><td>${r.completo ? r.dias : r.dias + '/' + r.diasPeriodo}</td><td>${fmtInt(r.volume)}</td><td>${fmtPct(nsDe(r))}</td></tr>`).join('')}
       </tbody></table>
       <div class="row" style="margin-top:12px"><button class="btn sec" id="cClose">Fechar</button><button class="btn danger" id="cDel">Excluir</button></div></div>`;
     document.body.appendChild(bg);
@@ -1096,13 +1255,15 @@
     window.addEventListener('message', e => {
       if (e.source !== window.parent || !e.data || e.data.tipo !== 'co-painel:dados') return;
       const d = e.data;
-      if (d.erro) { snaps = []; mapiInfo = { erro: d.erro }; render(); return; }
+      if (d.erro) { snaps = []; sistemasDoMapi(null); mapiInfo = { erro: d.erro }; render(); return; }
       const texto = String(d.texto || '');
       const pr = P.parse(texto);
       if (pr.erros.length) {
-        snaps = []; mapiInfo = { erro: `Os dados têm ${pr.erros.length} erro(s): ` + pr.erros.slice(0, 3).map(x => x.msg).join(' · ') };
+        snaps = []; sistemasDoMapi(null);
+        mapiInfo = { erro: `Os dados têm ${pr.erros.length} erro(s): ` + pr.erros.slice(0, 3).map(x => x.msg).join(' · ') };
       } else {
         snaps = [montarSnap(pr, P.hash(texto), 'publicado', 'MAPI', d.publicadoEm ? Date.parse(d.publicadoEm) : Date.now())];
+        sistemasDoMapi(d.sistemas);
         mapiInfo = { origem: d.origem || '' };
       }
       sel = null; render();
@@ -1110,13 +1271,15 @@
     render();
     window.parent.postMessage({ tipo: 'co-painel:pronto', versao: APP_VERSION }, '*');
   } else (async () => {
-    try { cred = await K.lerCred(); await reload(); } catch (e) { main.innerHTML = `<div class="card"><div class="banner bad">Erro ao abrir os dados: ${esc(e.message)}</div></div>`; return; }
+    try { cred = await K.lerCred(); await reload(); await carregarSistemasSalvos(); } catch (e) { main.innerHTML = `<div class="card"><div class="banner bad">Erro ao abrir os dados: ${esc(e.message)}</div></div>`; return; }
     if (!cred && snaps.length) { for (const s of snaps) await dbDel(s.id).catch(() => {}); snaps = []; }  // dados sem acesso: não ficam
+    if (!cred) await apagarSistemas();
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     go(snaps.length ? 'painel' : 'dados');
     buscarPublicado(false);
   })();
   if (!MODO_MAPI && 'serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
   $('#bShare').addEventListener('click', abrirCompartilhar);
-  window.__ns = { version: APP_VERSION, state: () => ({ snaps, preview, view, modo, pubStatus, logado: !!cred }), reload, buscarPublicado, share: { dados: dadosCompartilhar, texto: () => textoCompartilhar(), teams: () => htmlTeams(), simples: () => textoSimples(), svg: () => svgCompartilhar(dadosCompartilhar()), png: async () => { const b = await pngDeSvg(svgCompartilhar(dadosCompartilhar())); return { size: b.size, type: b.type, url: await new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b); }) }; } } };
+  $('#bSeg').addEventListener('click', abrirMenuSeg);
+  window.__ns = { version: APP_VERSION, state: () => ({ snaps, preview, view, modo, pubStatus, logado: !!cred, segmento: segAtual(), segmentos: segmentosDisp(), corte: corteAtual(), sistemas: { carregado: !!sisDados, itens: sisDados ? sisDados.itens.length : 0, hash: sisHash, aviso: sisAviso, modulo: !!SIS } }), reload, buscarPublicado, share: { dados: dadosCompartilhar, texto: () => textoCompartilhar(), teams: () => htmlTeams(), simples: () => textoSimples(), svg: () => svgCompartilhar(dadosCompartilhar()), png: async () => { const b = await pngDeSvg(svgCompartilhar(dadosCompartilhar())); return { size: b.size, type: b.type, url: await new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b); }) }; } } };
 })();

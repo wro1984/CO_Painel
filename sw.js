@@ -1,7 +1,7 @@
 /* NS Painel — service worker */
-const VERSION = '3.6.0';
+const VERSION = '3.7.3';
 const CACHE = 'ns-painel-v' + VERSION;
-const CORE = ['./', 'index.html', 'app.js', 'parser.js', 'cripto.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
+const CORE = ['./', 'index.html', 'app.js', 'parser.js', 'cripto.js', 'sistemas.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));

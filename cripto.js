@@ -8,6 +8,9 @@
  *   acessos  { <id>: {salt, iv, ct} }   id = SHA-256("co-painel:" + MATRÍCULA)
  *            ct = a chave dos dados, cifrada (AES-GCM) com a chave da pessoa
  *   dados    {iv, ct}                    o TXT, cifrado (AES-GCM) com a chave dos dados
+ *   sistemas {iv, ct}  (OPCIONAL)       o TXT de problemas sistêmicos (mesmo formato do sistemas.txt),
+ *                                       cifrado com a MESMA chave dos dados e um iv próprio.
+ *                                       Sem o campo, o app não mostra o card de sistemas.
  *
  * A chave da pessoa sai do código de acesso (PBKDF2 com o salt dela). Depois do
  * primeiro login fica guardada no aparelho como CryptoKey NÃO extraível: o código
@@ -49,17 +52,22 @@
     if (!p || p.app !== 'co-painel' || p.v !== 1 || !p.acessos || !p.dados || !p.kdf) throw new Error('dados.json em formato desconhecido.');
   }
 
-  async function abrirComChave(pacote, chaveUsuario, id) {
+  // chave dos dados (aberta com a chave da pessoa)
+  async function chaveDosDados(pacote, chaveUsuario, id) {
     const a = pacote.acessos[id];
     if (!a) { const e = new Error('Seu acesso a este painel foi removido. Se precisar, peça de novo no MAPI.'); e.code = 'sem_acesso'; throw e; }
     let rawK;
     try { rawK = await C.subtle.decrypt({ name: 'AES-GCM', iv: b64(a.iv) }, chaveUsuario, b64(a.ct)); }
     catch (e) { const er = new Error('Chave de acesso incorreta.'); er.code = 'codigo'; throw er; }
-    const k = await C.subtle.importKey('raw', rawK, 'AES-GCM', false, ['decrypt']);
-    let txt;
-    try { txt = await C.subtle.decrypt({ name: 'AES-GCM', iv: b64(pacote.dados.iv) }, k, b64(pacote.dados.ct)); }
-    catch (e) { const er = new Error('Os dados publicados estão corrompidos.'); er.code = 'corrompido'; throw er; }
-    return new Uint8Array(txt);
+    return C.subtle.importKey('raw', rawK, 'AES-GCM', false, ['decrypt']);
+  }
+  async function decifrar(k, campo, msg) {
+    try { return new Uint8Array(await C.subtle.decrypt({ name: 'AES-GCM', iv: b64(campo.iv) }, k, b64(campo.ct))); }
+    catch (e) { const er = new Error(msg); er.code = 'corrompido'; throw er; }
+  }
+  async function abrirComChave(pacote, chaveUsuario, id) {
+    const k = await chaveDosDados(pacote, chaveUsuario, id);
+    return decifrar(k, pacote.dados, 'Os dados publicados estão corrompidos.');
   }
 
   // primeiro acesso: matrícula + código -> credencial para guardar no aparelho
@@ -81,6 +89,18 @@
     // o salt da pessoa só muda se o acesso foi refeito no MAPI: aí o código antigo não vale mais
     if (a && a.salt !== cred.salt) { const e = new Error('Sua chave foi trocada. Entre de novo com a chave nova.'); e.code = 'sem_acesso'; throw e; }
     return abrirComChave(pacote, cred.chave, cred.id);
+  }
+
+  // campo opcional "sistemas": null quando o dados.json não traz o campo
+  async function abrirSistemas(pacote, cred) {
+    conferePacote(pacote);
+    const s = pacote.sistemas;
+    if (s == null) return null;
+    if (typeof s !== 'object' || typeof s.iv !== 'string' || typeof s.ct !== 'string') { const e = new Error('Os dados de sistemas publicados estão em formato desconhecido.'); e.code = 'corrompido'; throw e; }
+    const a = pacote.acessos[cred.id];
+    if (a && a.salt !== cred.salt) { const e = new Error('Sua chave foi trocada. Entre de novo com a chave nova.'); e.code = 'sem_acesso'; throw e; }
+    const k = await chaveDosDados(pacote, cred.chave, cred.id);
+    return decifrar(k, s, 'Os dados de sistemas publicados estão corrompidos.');
   }
 
   // ---------- credencial no aparelho (IndexedDB guarda CryptoKey sem expor a chave) ----------
@@ -105,6 +125,6 @@
   const salvarCred = c => op('readwrite', s => s.put(c, 'atual'));
   const apagarCred = () => op('readwrite', s => s.delete('atual'));
 
-  const api = { entrar, abrir, lerCred, salvarCred, apagarCred, idDe, normMatricula, normCodigo, codigoValido, ALFABETO };
+  const api = { entrar, abrir, abrirSistemas, lerCred, salvarCred, apagarCred, idDe, normMatricula, normCodigo, codigoValido, ALFABETO };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.NSCripto = api;
 })(typeof self !== 'undefined' ? self : this);
