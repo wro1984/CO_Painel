@@ -34,6 +34,10 @@ IPTBM (Oracle) ──► MAPI (servidor interno) ──► dados.json CRIPTOGRAF
    - campo **opcional** `sistemas:{iv,ct}` (desde a v3.7.0): o TXT de problemas sistêmicos (mesmo
      formato do `sistemas.txt`), cifrado com a **mesma chave** de `dados` e um `iv` próprio. Sem o
      campo, o app não mostra o card de sistemas; erro só nesse campo nunca bloqueia o NS;
+   - campo **opcional** `hub:{acessos:{id_hub:{salt, iv, ct}}}` (desde a v3.8.0, login único): a chave dos dados embrulhada
+     com a chave do **HUB dos apps** de quem tem o NS Painel no perfil. `id_hub` = SHA-256 de `"hub:" + MATRÍCULA`, `salt`
+     = o do HUB. O app lê a credencial que o HUB guardou no IndexedDB `co-hub-acesso` (mesmo endereço) e **só lê**:
+     nunca apaga nem copia (sair de todos os apps é no HUB). Sem acesso próprio, o app tenta essa credencial;
    - `id` = SHA-256 de `"co-painel:" + MATRÍCULA` (maiúscula, sem espaços);
    - chave da pessoa = PBKDF2-SHA256 (`kdf.iter` iterações) da chave normalizada; AES-GCM 256;
    - **normalização da chave** (`normCodigo`): tira acento, mantém só `A-Z a-z 0-9`, depois maiúscula.
@@ -98,9 +102,17 @@ Sem servidor (abrindo o `index.html` direto do disco) o app não busca dados nem
 | `ferramentas/` | referência da criptografia e gerador de dados de teste |
 | `dados.json` | **gerado pelo MAPI — não editar** |
 
+## Login único (HUB dos apps)
+
+O HUB fica em <https://wro1984.github.io/> (repositório `wro1984/wro1984.github.io`). Quem entrou no HUB neste aparelho
+e tem o NS Painel no perfil abre o painel sem digitar a chave (`lerCredHub()` em `cripto.js`). O botão ⌂ no topo volta
+para o HUB (escondido na visão do MAPI). A chave própria do painel continua valendo. Perfil sem o painel: aviso na tela de
+entrada, sem apagar a credencial do HUB.
+
 ## Acesso das pessoas
 
-Pedir, aprovar, remover e definir chaves é no MAPI (Magic → NS Painel), não aqui.
+Pedir, aprovar, remover e definir chaves é no MAPI (Comunicação → NS Painel, ou Comunicação → HUB dos apps para o login
+único), não aqui.
 Acesso removido: na publicação seguinte o app da pessoa apaga a chave e os dados do aparelho.
 
 ## Visão do MAPI (app dentro do MAPI, sem login)

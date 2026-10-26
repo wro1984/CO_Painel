@@ -1,7 +1,7 @@
 /* NS Painel — app (v3.2: dados criptografados publicados pelo MAPI, com acesso aprovado) */
 (function () {
   'use strict';
-  const APP_VERSION = '3.7.3';
+  const APP_VERSION = '3.8.0';
   const P = window.NSData;
   const K = window.NSCripto;
   // Problemas sistêmicos (sistemas.js): só com a mesma versão do app (evita misturar arquivos de versões diferentes)
@@ -232,6 +232,7 @@
       <div class="card login"><h2>Entrar</h2>
         <div class="small muted" style="margin-bottom:12px">Os números deste painel só abrem para quem tem acesso aprovado no MAPI.</div>
         ${loginMsg ? `<div class="banner warn">${esc(loginMsg)}</div>` : ''}
+        <div class="small muted" style="margin-bottom:12px">Já usa o HUB dos apps? <a href="/" style="color:var(--p700,#642A90);font-weight:650">Entrar pelo HUB</a></div>
         <form id="fLogin" autocomplete="off">
           <div class="field"><label for="lMat">Matrícula</label><input id="lMat" name="matricula" autocapitalize="characters" spellcheck="false" required></div>
           <div class="field"><label for="lCod">Chave de acesso</label><input id="lCod" name="codigo" placeholder="a chave que você recebeu" autocapitalize="none" spellcheck="false" required></div>
@@ -1196,12 +1197,15 @@
         <div class="small muted" style="margin-top:6px">NS Painel v${APP_VERSION}</div>
       </div>
       <div class="card"><h2>Acesso</h2>
-        <div class="small muted" style="margin-bottom:10px">Entrou como <b>${esc(cred ? cred.matricula : '')}</b>${cred && cred.desde ? ` em ${fmtDT(cred.desde)}` : ''}. Sair apaga deste aparelho o acesso e os dados salvos.</div>
-        <button class="btn sec" id="bSair">Sair deste aparelho</button>
+        ${cred && cred.via === 'hub'
+          ? `<div class="small muted" style="margin-bottom:10px">Entrou como <b>${esc(cred.matricula || '')}</b> pelo <b>HUB dos apps</b>. Para sair de todos os apps, use Sair no HUB.</div>
+        <a class="btn sec" href="/">Abrir o HUB</a>`
+          : `<div class="small muted" style="margin-bottom:10px">Entrou como <b>${esc(cred ? cred.matricula : '')}</b>${cred && cred.desde ? ` em ${fmtDT(cred.desde)}` : ''}. Sair apaga deste aparelho o acesso e os dados salvos.</div>
+        <button class="btn sec" id="bSair">Sair deste aparelho</button>`}
       </div>`;
     main.querySelectorAll('.it').forEach(it => it.onclick = () => abrirSnap(+it.dataset.id));
     $('#bExp').onclick = exportar;
-    $('#bSair').onclick = () => { if (window.confirm('Sair? Para entrar de novo vai precisar da matrícula e do código.')) encerrarAcesso(''); };
+    if ($('#bSair')) $('#bSair').onclick = () => { if (window.confirm('Sair? Para entrar de novo vai precisar da matrícula e do código.')) encerrarAcesso(''); };
     $('#bImp').onclick = () => $('#fileImp').click();
     if (navigator.storage && navigator.storage.persisted) navigator.storage.persisted().then(p => {
       const el = $('#persist'); if (el) el.textContent = p ? 'Armazenamento protegido contra limpeza automática ✓' : 'O navegador pode limpar os dados se faltar espaço — mantenha backup.';
@@ -1271,7 +1275,8 @@
     render();
     window.parent.postMessage({ tipo: 'co-painel:pronto', versao: APP_VERSION }, '*');
   } else (async () => {
-    try { cred = await K.lerCred(); await reload(); await carregarSistemasSalvos(); } catch (e) { main.innerHTML = `<div class="card"><div class="banner bad">Erro ao abrir os dados: ${esc(e.message)}</div></div>`; return; }
+    // login único: sem acesso próprio, usa o do HUB (quem já entrou no HUB neste aparelho não digita de novo)
+    try { cred = await K.lerCred(); if (!cred) cred = await K.lerCredHub(); await reload(); await carregarSistemasSalvos(); } catch (e) { main.innerHTML = `<div class="card"><div class="banner bad">Erro ao abrir os dados: ${esc(e.message)}</div></div>`; return; }
     if (!cred && snaps.length) { for (const s of snaps) await dbDel(s.id).catch(() => {}); snaps = []; }  // dados sem acesso: não ficam
     if (!cred) await apagarSistemas();
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
@@ -1279,6 +1284,7 @@
     buscarPublicado(false);
   })();
   if (!MODO_MAPI && 'serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  if (MODO_MAPI && $('#bHub')) $('#bHub').hidden = true;   // dentro do MAPI não há HUB para onde voltar
   $('#bShare').addEventListener('click', abrirCompartilhar);
   $('#bSeg').addEventListener('click', abrirMenuSeg);
   window.__ns = { version: APP_VERSION, state: () => ({ snaps, preview, view, modo, pubStatus, logado: !!cred, segmento: segAtual(), segmentos: segmentosDisp(), corte: corteAtual(), sistemas: { carregado: !!sisDados, itens: sisDados ? sisDados.itens.length : 0, hash: sisHash, aviso: sisAviso, modulo: !!SIS } }), reload, buscarPublicado, share: { dados: dadosCompartilhar, texto: () => textoCompartilhar(), teams: () => htmlTeams(), simples: () => textoSimples(), svg: () => svgCompartilhar(dadosCompartilhar()), png: async () => { const b = await pngDeSvg(svgCompartilhar(dadosCompartilhar())); return { size: b.size, type: b.type, url: await new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b); }) }; } } };
