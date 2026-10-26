@@ -82,9 +82,45 @@
     return { cred: { id, matricula: normMatricula(matricula), chave, salt: a.salt, desde: Date.now() }, bytes };
   }
 
-  // próximos acessos: usa a credencial guardada
+  // ---------- login único pelo HUB (wro1984.github.io) ----------
+  // O HUB guarda a credencial da pessoa no IndexedDB "co-hub-acesso" deste mesmo endereço. Quem tem este app no perfil
+  // do HUB recebe, no campo `hub` do dados.json, a chave dos dados embrulhada com a chave do HUB:
+  //   hub {acessos: {<id do HUB>: {salt, iv, ct}}}    id = SHA-256("hub:" + MATRÍCULA); salt = o do HUB
+  // O app só LÊ a credencial do HUB, nunca a apaga nem a copia: sair de todos os apps é no HUB.
+  const lerCredHub = () => new Promise(res => {
+    if (typeof indexedDB === 'undefined') { res(null); return; }
+    let rq;
+    try { rq = indexedDB.open('co-hub-acesso', 1); } catch (e) { res(null); return; }
+    rq.onupgradeneeded = () => { try { rq.transaction.abort(); } catch (e) { /* segue */ } };   // sem HUB neste aparelho: não cria nada
+    rq.onerror = () => res(null);
+    rq.onsuccess = () => {
+      const d = rq.result;
+      try {
+        const g = d.transaction('cred', 'readonly').objectStore('cred').get('atual');
+        g.onsuccess = () => {
+          d.close();
+          const c = g.result;
+          res(c && c.id && c.chave && c.salt ? { via: 'hub', id: c.id, matricula: c.matricula, chave: c.chave, salt: c.salt, desde: c.desde } : null);
+        };
+        g.onerror = () => { d.close(); res(null); };
+      } catch (e) { d.close(); res(null); }
+    };
+  });
+  const semAcesso = msg => { const e = new Error(msg); e.code = 'sem_acesso'; return e; };
+  async function chaveDosDadosHub(pacote, cred) {
+    const a = pacote.hub && pacote.hub.acessos && pacote.hub.acessos[cred.id];
+    if (!a) throw semAcesso('Seu perfil no HUB não inclui este painel. Fale com o administrador, ou entre com a chave própria do painel.');
+    if (a.salt !== cred.salt) throw semAcesso('Sua chave do HUB foi trocada. Abra o HUB e entre de novo.');
+    let rawK;
+    try { rawK = await C.subtle.decrypt({ name: 'AES-GCM', iv: b64(a.iv) }, cred.chave, b64(a.ct)); }
+    catch (e) { throw semAcesso('Sua chave do HUB não abre este painel. Abra o HUB e entre de novo.'); }
+    return C.subtle.importKey('raw', rawK, 'AES-GCM', false, ['decrypt']);
+  }
+
+  // próximos acessos: usa a credencial guardada (a própria do painel ou a do HUB)
   async function abrir(pacote, cred) {
     conferePacote(pacote);
+    if (cred && cred.via === 'hub') return decifrar(await chaveDosDadosHub(pacote, cred), pacote.dados, 'Os dados publicados estão corrompidos.');
     const a = pacote.acessos[cred.id];
     // o salt da pessoa só muda se o acesso foi refeito no MAPI: aí o código antigo não vale mais
     if (a && a.salt !== cred.salt) { const e = new Error('Sua chave foi trocada. Entre de novo com a chave nova.'); e.code = 'sem_acesso'; throw e; }
@@ -97,6 +133,7 @@
     const s = pacote.sistemas;
     if (s == null) return null;
     if (typeof s !== 'object' || typeof s.iv !== 'string' || typeof s.ct !== 'string') { const e = new Error('Os dados de sistemas publicados estão em formato desconhecido.'); e.code = 'corrompido'; throw e; }
+    if (cred && cred.via === 'hub') return decifrar(await chaveDosDadosHub(pacote, cred), s, 'Os dados de sistemas publicados estão corrompidos.');
     const a = pacote.acessos[cred.id];
     if (a && a.salt !== cred.salt) { const e = new Error('Sua chave foi trocada. Entre de novo com a chave nova.'); e.code = 'sem_acesso'; throw e; }
     const k = await chaveDosDados(pacote, cred.chave, cred.id);
@@ -125,6 +162,6 @@
   const salvarCred = c => op('readwrite', s => s.put(c, 'atual'));
   const apagarCred = () => op('readwrite', s => s.delete('atual'));
 
-  const api = { entrar, abrir, abrirSistemas, lerCred, salvarCred, apagarCred, idDe, normMatricula, normCodigo, codigoValido, ALFABETO };
+  const api = { entrar, abrir, abrirSistemas, lerCred, lerCredHub, salvarCred, apagarCred, idDe, normMatricula, normCodigo, codigoValido, ALFABETO };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.NSCripto = api;
 })(typeof self !== 'undefined' ? self : this);
