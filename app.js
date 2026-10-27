@@ -1,7 +1,7 @@
 /* NS Painel — app (v3.2: dados criptografados publicados pelo MAPI, com acesso aprovado) */
 (function () {
   'use strict';
-  const APP_VERSION = '3.9.0';
+  const APP_VERSION = '3.9.1';
   const P = window.NSData;
   const K = window.NSCripto;
   // Problemas sistêmicos (sistemas.js): só com a mesma versão do app (evita misturar arquivos de versões diferentes)
@@ -243,7 +243,7 @@
       <div class="card"><h2>Ainda não tem acesso?</h2>
         <ol class="tips">
           <li>Entre no <b>MAPI</b> pela rede da empresa (Portal de Aplicações).</li>
-          <li>Na área do NS Painel, toque em <b>Pedir acesso</b>.</li>
+          <li>Em <b>Comunicação → Nível de Serviço</b>, toque em <b>Pedir acesso</b>.</li>
           <li>Quando o pedido for aprovado, o MAPI mostra a sua chave. Digite aqui com a sua matrícula.</li>
         </ol>
         <div class="small muted" style="margin-top:8px">Também pode receber a chave direto do administrador. Ela é pessoal; maiúsculas, acentos e traços não fazem diferença. Depois de entrar, este aparelho lembra o acesso e a chave não fica salva.</div>
