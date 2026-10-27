@@ -1,7 +1,7 @@
 /* NS Painel — app (v3.2: dados criptografados publicados pelo MAPI, com acesso aprovado) */
 (function () {
   'use strict';
-  const APP_VERSION = '3.8.0';
+  const APP_VERSION = '3.9.0';
   const P = window.NSData;
   const K = window.NSCripto;
   // Problemas sistêmicos (sistemas.js): só com a mesma versão do app (evita misturar arquivos de versões diferentes)
@@ -1194,7 +1194,7 @@
         <div class="small muted" style="margin-bottom:10px">Os dados ficam neste aparelho. Exporte de vez em quando.</div>
         <div class="row"><button class="btn sec" id="bExp">Exportar</button><button class="btn sec" id="bImp">Importar backup</button></div>
         <div class="small muted" id="persist" style="margin-top:10px"></div>
-        <div class="small muted" style="margin-top:6px">NS Painel v${APP_VERSION}</div>
+        <div class="small muted" style="margin-top:6px">Nível de Serviço v${APP_VERSION}</div>
       </div>
       <div class="card"><h2>Acesso</h2>
         ${cred && cred.via === 'hub'
@@ -1240,7 +1240,7 @@
     const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
     try {
       const data = JSON.parse(await f.text());
-      if (!data || data.app !== 'ns-painel' || !Array.isArray(data.snapshots)) throw new Error('Arquivo não é um backup do NS Painel.');
+      if (!data || data.app !== 'ns-painel' || !Array.isArray(data.snapshots)) throw new Error('Arquivo não é um backup do Nível de Serviço.');
       const valid = data.snapshots.filter(s => Number.isInteger(s.id) && Array.isArray(s.rows) && s.rows.length && s.rows.every(r =>
         /^[123]\d{8}$/.test(r.ordem) && [r.volume, r.total, r.ate, r.dias].every(Number.isInteger) && r.ate <= r.total && r.total <= r.volume));
       if (valid.length !== data.snapshots.length && !window.confirm(`${data.snapshots.length - valid.length} item(ns) do backup estão inválidos e serão ignorados. Continuar?`)) return;

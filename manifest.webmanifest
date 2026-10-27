@@ -1,6 +1,6 @@
 {
-  "name": "NS Painel · B2C Suporte",
-  "short_name": "NS Painel",
+  "name": "Nível de Serviço · B2C Suporte",
+  "short_name": "Nível de Serviço",
   "description": "Painel de nível de serviço (NS 5 min) do B2C Suporte por dia, semana e mês.",
   "start_url": "./",
   "scope": "./",
