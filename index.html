@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Painel - Nível de Serviço</title>
+<title>Nível de Serviço</title>
 <meta name="theme-color" content="#642A90">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -36,11 +36,18 @@
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-header{position:sticky;top:0;z-index:5;background:linear-gradient(135deg,var(--p800),var(--p700) 60%,var(--p500));color:#fff;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 10px;display:flex;align-items:center;gap:10px}
+header{position:sticky;top:0;z-index:5;background:linear-gradient(135deg,var(--p800),var(--p700) 60%,var(--p500));color:#fff;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 10px}
+/* topo igual em todos os apps: voltar ao HUB à esquerda, botões do app à direita; no desktop, alinhado à coluna do conteúdo */
+header .hrow{display:flex;align-items:center;gap:10px;max-width:736px;margin:0 auto}
+.hubbt{width:40px;height:40px;border-radius:14px;border:1px solid rgba(255,255,255,.24);background:rgba(255,255,255,.14);color:#fff;display:grid;place-items:center;flex:none;text-decoration:none}
+.hubbt:active{background:rgba(255,255,255,.26)}
+.hubbt:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.hubbt svg{width:20px;height:20px}
+.hubbt[hidden]{display:none}
 header h1{font-size:17px;margin:0;font-weight:650;letter-spacing:.2px;flex:1}
 header .ver{font-size:11px;opacity:.6}
 main{padding:12px 12px calc(84px + var(--safe-b));max-width:760px;margin:0 auto}
-nav{position:fixed;bottom:0;left:0;right:0;z-index:6;background:var(--card);border-top:1px solid var(--line);display:flex;padding-bottom:var(--safe-b)}
+nav{position:fixed;bottom:0;left:0;right:0;z-index:6;background:var(--card);border-top:1px solid var(--line);display:flex;padding-bottom:var(--safe-b);padding-inline:max(0px,calc((100% - 760px)/2))}
 nav button{flex:1;border:0;background:none;color:var(--ink3);padding:10px 4px 12px;font:600 12px system-ui;display:flex;flex-direction:column;align-items:center;gap:3px}
 nav button svg{width:22px;height:22px}
 nav button.on{color:var(--accent)}
@@ -210,7 +217,7 @@ header h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .segmenu button .ck{font-size:15px;visibility:hidden}
 .segmenu button.on .ck{visibility:visible}
 @media (prefers-color-scheme: dark){.segmenu button.on{color:#d3b5f0}}
-.fab{position:fixed;right:16px;bottom:calc(76px + var(--safe-b));z-index:7;width:54px;height:54px;border-radius:50%;border:0;background:var(--p700);color:#fff;box-shadow:0 6px 18px rgba(58,22,88,.38);display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.fab{position:fixed;right:max(16px,calc((100% - 760px)/2 + 16px));bottom:calc(76px + var(--safe-b));z-index:7;width:54px;height:54px;border-radius:50%;border:0;background:var(--p700);color:#fff;box-shadow:0 6px 18px rgba(58,22,88,.38);display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .fab svg{width:23px;height:23px}
 .fab[hidden]{display:none}
 .fab:active{transform:scale(.94)}
@@ -322,7 +329,7 @@ table.conf td.nd{color:var(--ink3)}
 </style>
 </head>
 <body>
-<header><h1>Painel - Nível de Serviço</h1><span class="ver" id="ver"></span><button id="bSeg" class="hbtn segbtn" hidden aria-haspopup="menu" aria-expanded="false" aria-label="Trocar segmento"><span id="segNome">B2C</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button><a id="bHub" class="hbtn" href="/" aria-label="Voltar ao HUB dos apps" title="HUB dos apps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></a></header>
+<header><div class="hrow"><a id="bHub" class="hubbt" href="/" aria-label="Voltar ao HUB dos apps" title="HUB dos apps"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></a><h1>Nível de Serviço</h1><span class="ver" id="ver"></span><button id="bSeg" class="hbtn segbtn" hidden aria-haspopup="menu" aria-expanded="false" aria-label="Trocar segmento"><span id="segNome">B2C</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button></div></header>
 <main id="main"></main>
 <button id="bShare" class="fab" hidden aria-label="Compartilhar (WhatsApp ou Teams)" title="Compartilhar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg></button>
 <nav id="nav">

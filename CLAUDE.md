@@ -1,8 +1,14 @@
-# CO_Painel — NS Painel · B2C Suporte
+# CO_Painel — Nível de Serviço · B2C Suporte
 
 App web instalável no celular (PWA), com o NS 5 min do B2C Suporte por **Dia**, **Semana** e
 **Mês**. Publicado pelo GitHub Pages em <https://wro1984.github.io/CO_Painel/> a partir da
 branch `main`. **Todo push na `main` vai para o ar em cerca de 1 minuto**, para todos os usuários.
+
+O nome exibido do app é **Nível de Serviço** (antes "NS Painel"). Repositório, `app:"co-painel"`, ids e caches
+(`ns-painel-v*`, chave `ns-painel` no HUB) continuam com os nomes antigos: mudar quebra o acesso de todo mundo.
+
+**Topo padrão dos apps** (igual no Problemas Sistêmicos e na URA): botão de voltar ao HUB (ícone de grade, `#bHub`) à
+esquerda, botões do app à direita. No desktop o topo, o menu de baixo e o botão flutuante ficam na coluna de 760 px do conteúdo.
 
 Leia este arquivo inteiro antes de mudar qualquer coisa.
 
