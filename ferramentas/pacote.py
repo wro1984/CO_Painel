@@ -12,12 +12,16 @@ Quem sai da lista de aprovados não recebe a chave nova e para de abrir os dados
 Uso (teste local):
   python ferramentas/pacote.py codigo
   python ferramentas/pacote.py montar --txt dados.txt --acesso MATRICULA:CODIGO \
-      --estado acessos_local.json --saida dados.json [--sistemas sistemas.txt]
+      --estado acessos_local.json --saida dados.json [--sistemas sistemas.txt] [--bases bases.json]
 
 `--sistemas` (opcional) inclui o TXT de problemas sistêmicos no campo "sistemas" do
 dados.json: mesmo formato do sistemas.txt (tabulação, cabeçalho na 1ª linha, colunas
 SISTEMA, DATA_INICIO, DATA_FIM e as demais), cifrado com a MESMA chave dos dados e um iv
 próprio. Sem o campo, o app simplesmente não mostra o card de sistemas.
+
+`--bases` (opcional) inclui o JSON da atualização das bases no campo "bases": o último registro de cada
+base que compõe o NS (formato de ns_bases.py no MAPI), cifrado com a MESMA chave dos dados e um iv próprio.
+Sem o campo, o app não mostra o bloco "Atualização das bases".
 
 `--estado` guarda id/salt/chave de cada acesso entre uma publicação e outra, como
 o MAPI faz no banco. Sem ele, cada montagem sorteia salts novos e quem já entrou
@@ -80,7 +84,8 @@ def novo_acesso(matricula: str, codigo: str, iteracoes: int = ITERACOES) -> dict
             "chave": _b64(chave_do_codigo(codigo, salt, iteracoes))}
 
 
-def montar_pacote(texto: bytes, acessos: list, iteracoes: int = ITERACOES, sistemas: bytes = None) -> dict:
+def montar_pacote(texto: bytes, acessos: list, iteracoes: int = ITERACOES, sistemas: bytes = None,
+                  bases: bytes = None) -> dict:
     if not acessos:
         raise ValueError("Nenhum acesso aprovado: ninguém conseguiria abrir os dados.")
     chave_dados = AESGCM.generate_key(bit_length=256)
@@ -96,6 +101,9 @@ def montar_pacote(texto: bytes, acessos: list, iteracoes: int = ITERACOES, siste
         # campo opcional: mesma chave dos dados, iv novo (nunca repetir iv com a mesma chave)
         iv_s = os.urandom(12)
         pacote["sistemas"] = {"iv": _b64(iv_s), "ct": _b64(AESGCM(chave_dados).encrypt(iv_s, sistemas, None))}
+    if bases is not None:
+        iv_b = os.urandom(12)
+        pacote["bases"] = {"iv": _b64(iv_b), "ct": _b64(AESGCM(chave_dados).encrypt(iv_b, bases, None))}
     for a in acessos:
         iv_a = os.urandom(12)
         chave = base64.b64decode(a["chave"])
@@ -115,6 +123,7 @@ def main():
     m.add_argument("--estado", help="arquivo local com os acessos já criados (fora do git)")
     m.add_argument("--iteracoes", type=int, default=ITERACOES)
     m.add_argument("--sistemas", help="TXT de problemas sistêmicos (opcional, mesmo formato do sistemas.txt)")
+    m.add_argument("--bases", help="JSON da atualização das bases (opcional, formato de ns_bases.py no MAPI)")
     a = ap.parse_args()
     if a.cmd == "codigo":
         print(novo_codigo())
@@ -138,12 +147,16 @@ def main():
             json.dump(acessos, f)
     with open(a.txt, "rb") as f:
         texto = f.read()
+    bases = None
+    if a.bases:
+        with open(a.bases, "rb") as f:
+            bases = f.read()
     sistemas = None
     if a.sistemas:
         with open(a.sistemas, "rb") as f:
             sistemas = f.read()
     with open(a.saida, "w", encoding="utf-8") as f:
-        json.dump(montar_pacote(texto, acessos, a.iteracoes, sistemas), f, ensure_ascii=False)
+        json.dump(montar_pacote(texto, acessos, a.iteracoes, sistemas, bases), f, ensure_ascii=False)
     print(f"{a.saida}: {len(texto)} bytes de dados"
           + (f", {len(sistemas)} bytes de sistemas" if sistemas is not None else "")
           + f", {len(acessos)} acesso(s).")

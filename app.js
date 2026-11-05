@@ -1,7 +1,7 @@
 /* NS Painel — app (v3.2: dados criptografados publicados pelo MAPI, com acesso aprovado) */
 (function () {
   'use strict';
-  const APP_VERSION = '3.9.1';
+  const APP_VERSION = '3.10.0';
   const P = window.NSData;
   const K = window.NSCripto;
   // Problemas sistêmicos (sistemas.js): só com a mesma versão do app (evita misturar arquivos de versões diferentes)
@@ -198,6 +198,7 @@
       pubStatus = { estado: 'erro', msg: e.message, em: Date.now() }; return;
     }
     await sistemasDoPacote(b.pacote).catch(() => {});
+    await basesDoPacote(b.pacote).catch(() => {});
     const { text } = P.decode(bytes);
     const pr = P.parse(text);
     const lm = b.lm || (b.pacote.gerado_em ? Date.parse(b.pacote.gerado_em) : null);
@@ -222,6 +223,7 @@
     try { await K.apagarCred(); } catch (e) {}
     try { for (const s of snaps) await dbDel(s.id); } catch (e) {}
     await apagarSistemas();
+    basesInfo = null;
     cred = null; snaps = []; preview = null; pubStatus = null;
     loginMsg = motivo || '';
     render();
@@ -273,6 +275,7 @@
           await reload();
         }
         await sistemasDoPacote(pacoteLogin.pacote).catch(() => {});
+        await basesDoPacote(pacoteLogin.pacote).catch(() => {});
         pacoteLogin = null;
         toast('Acesso liberado neste aparelho ✓');
         go(snaps.length ? 'painel' : 'dados');
@@ -358,6 +361,59 @@
     sisDados = null; sisHash = null; sisAviso = '';
     try { await dbDel(SIS_ID); } catch (e) {}
   }
+  // ---------- Atualização das bases ----------
+  // Campo opcional "bases" do dados.json (cifrado com a mesma chave): até quando cada base que compõe o NS tem dado.
+  // Só informa: não muda nenhum número. Fica na memória (nada é guardado no aparelho: hora velha enganaria).
+  // Erro aqui nunca bloqueia o NS: o bloco simplesmente não aparece.
+  let basesInfo = null;
+  function lerBases(texto) {
+    try {
+      const d = JSON.parse(String(texto));
+      return d && d.v === 1 && d.segmentos && typeof d.segmentos === 'object' ? d : null;
+    } catch (e) { return null; }
+  }
+  async function basesDoPacote(pacote) {
+    if (!cred) return;
+    let bytes;
+    try { bytes = await K.abrirBases(pacote, cred); }
+    catch (e) { return; }                                   // acesso perdido é tratado na abertura dos dados
+    const novo = bytes ? lerBases(P.decode(bytes).text) : null;
+    const mudou = JSON.stringify(novo) !== JSON.stringify(basesInfo);
+    basesInfo = novo;
+    if (mudou) redesenharPainel();
+  }
+  function basesDoMapi(texto) { basesInfo = texto == null || String(texto).trim() === '' ? null : lerBases(texto); }
+  const basesSeg = () => (basesInfo && basesInfo.segmentos && basesInfo.segmentos[segAtual()]) || null;
+  const basesAtencao = () => { const b = basesSeg(); return !!b && b.estado === 'atencao'; };
+  const quandoBase = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)} ${iso.slice(11, 16)}`;
+  function haQuanto(iso, ate) {
+    const m = Math.round((Date.parse(ate) - Date.parse(iso)) / 60000);
+    if (!isFinite(m) || m < 0) return '';
+    if (m < 60) return `há ${m} min`;
+    const h = Math.floor(m / 60), r = m % 60;
+    return h >= 24 ? `há ${Math.floor(h / 24)} d` : `há ${h} h${r ? ' ' + String(r).padStart(2, '0') + ' min' : ''}`;
+  }
+  function cardBases() {
+    const b = basesSeg();
+    if (!b || !Array.isArray(b.bases) || !b.bases.length) return '';
+    const ate = basesInfo.coletado_em || '';
+    const atenc = b.estado === 'atencao';
+    const linhas = b.bases.map(x => {
+      const quando = !x.ultimo ? 'sem registro' : x.precisao === 'dia' ? `dados até ${x.ultimo.slice(8, 10)}/${x.ultimo.slice(5, 7)}` : quandoBase(x.ultimo);
+      const rel = x.ultimo && x.precisao !== 'dia' && ate ? haQuanto(x.ultimo, ate) : '';
+      return `<div class="base${x.atrasada ? ' atr' : ''}"><i class="pt${x.atrasada ? ' w' : ''}" aria-hidden="true"></i><span class="n">${esc(x.nome)}</span><span class="h">${esc(quando)}${rel ? `<small>${esc(rel)}</small>` : ''}</span></div>`;
+    }).join('');
+    const titulo = atenc ? 'Número ainda em consolidação' : b.bases.length > 1 ? 'Bases em dia' : 'Base em dia';
+    const texto = atenc ? b.mensagem.replace(/^Número ainda em consolidação\.\s*/, '') : b.mensagem;
+    const nota = ate ? `Hora do último registro de cada base, na coleta de ${esc(quandoBase(ate))}.` : '';
+    return `<div class="card bases-card" role="group" aria-label="Atualização das bases">
+      <h2>Atualização das bases</h2>
+      <div class="faixa ${atenc ? 'warn' : 'okf'}"><span class="ic" aria-hidden="true">${atenc ? '⚠' : '✔'}</span><span><b>${esc(titulo)}</b>${esc(texto)}</span></div>
+      <div class="bases">${linhas}</div>
+      <div class="nota">${nota}</div></div>`;
+  }
+  const tagConsolida = sel0 => (basesAtencao() && !sel0 ? ' <span class="prov">em consolidação</span>' : '');
+
   function redesenharPainel() {
     if (view !== 'painel' || preview || !snaps.length) return;
     const y = window.scrollY; renderPainel(); window.scrollTo(0, y);
@@ -679,6 +735,7 @@
         <div class="meta-line" style="margin-top:10px"><span>Dados até <b>${fmtData(s0.dataRef)}</b></span><span>${s0.origem === 'publicado' ? 'publicado' : 'importado'} ${fmtDT(s0.publicadoEm || s0.id)}</span></div>
         ${selRow ? `<button class="selchip" id="bLimpar" aria-label="Limpar seleção"><span class="t">Selecionado: <b>${esc(P.rotulo(selRow))}</b> · toque para limpar</span><span aria-hidden="true">✕</span></button>` : ''}
       </div>
+      ${cardBases()}
       <div id="pag">${painelTipo(modo, items, serie, all)}</div>`;
     modosDisp = ORDEM_MODOS.filter(t => por(t).length);
     dicaArrastar();
@@ -706,8 +763,8 @@
     const sNs = dPP == null ? 'sem período anterior' : `${pp(dPP)}${vsPrev}`;
     const dMeta = cur.ns == null ? null : difPP(cur.ns, cur.meta);
     const k = `
-        <div class="${kc} kns"><div class="l">NS ${corteAtual()} min</div><div class="v">${fmtPct(cur.ns)}</div><div class="s">${sNs}</div></div>
-        <div class="${kc} kvol"><div class="l">Chamadas recebidas</div><div class="v">${fmtInt(cur.volume)}</div><div class="s">${sVol}</div></div>
+        <div class="${kc} kns"><div class="l">NS ${corteAtual()} min${tagConsolida(selRow)}</div><div class="v">${fmtPct(cur.ns)}</div><div class="s">${sNs}</div></div>
+        <div class="${kc} kvol"><div class="l">Chamadas recebidas${tagConsolida(selRow)}</div><div class="v">${fmtInt(cur.volume)}</div><div class="s">${sVol}</div></div>
         <div class="${kc} kdist"><div class="l">Distância da meta</div><div class="v">${dMeta == null ? '—' : pp(dMeta)}</div><div class="s">${cur.status ? `<span class="pill ${cur.status}">${stNome(cur.status)}</span>` : ''}</div></div>
         <div class="${kc} kper"><div class="l">${t === 'DIA' && filtroDia != null && !selRow ? WD_ULTIMO[filtroDia] : tituloPeriodo(t, !!selRow)}</div><div class="v">${esc(valorPeriodo(cur))}</div><div class="s">${situacaoPeriodo(cur)}</div></div>`;
     const fd = t === 'DIA' ? filtroDia : null;
@@ -1268,6 +1325,7 @@
       } else {
         snaps = [montarSnap(pr, P.hash(texto), 'publicado', 'MAPI', d.publicadoEm ? Date.parse(d.publicadoEm) : Date.now())];
         sistemasDoMapi(d.sistemas);
+        basesDoMapi(d.bases);
         mapiInfo = { origem: d.origem || '' };
       }
       sel = null; render();
@@ -1287,5 +1345,5 @@
   if (MODO_MAPI && $('#bHub')) $('#bHub').hidden = true;   // dentro do MAPI não há HUB para onde voltar
   $('#bShare').addEventListener('click', abrirCompartilhar);
   $('#bSeg').addEventListener('click', abrirMenuSeg);
-  window.__ns = { version: APP_VERSION, state: () => ({ snaps, preview, view, modo, pubStatus, logado: !!cred, segmento: segAtual(), segmentos: segmentosDisp(), corte: corteAtual(), sistemas: { carregado: !!sisDados, itens: sisDados ? sisDados.itens.length : 0, hash: sisHash, aviso: sisAviso, modulo: !!SIS } }), reload, buscarPublicado, share: { dados: dadosCompartilhar, texto: () => textoCompartilhar(), teams: () => htmlTeams(), simples: () => textoSimples(), svg: () => svgCompartilhar(dadosCompartilhar()), png: async () => { const b = await pngDeSvg(svgCompartilhar(dadosCompartilhar())); return { size: b.size, type: b.type, url: await new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b); }) }; } } };
+  window.__ns = { version: APP_VERSION, state: () => ({ snaps, preview, view, modo, pubStatus, logado: !!cred, segmento: segAtual(), segmentos: segmentosDisp(), corte: corteAtual(), bases: basesInfo ? { segmentos: Object.keys(basesInfo.segmentos), atencao: basesAtencao() } : null, sistemas: { carregado: !!sisDados, itens: sisDados ? sisDados.itens.length : 0, hash: sisHash, aviso: sisAviso, modulo: !!SIS } }), reload, buscarPublicado, share: { dados: dadosCompartilhar, texto: () => textoCompartilhar(), teams: () => htmlTeams(), simples: () => textoSimples(), svg: () => svgCompartilhar(dadosCompartilhar()), png: async () => { const b = await pngDeSvg(svgCompartilhar(dadosCompartilhar())); return { size: b.size, type: b.type, url: await new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b); }) }; } } };
 })();

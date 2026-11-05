@@ -11,6 +11,9 @@
  *   sistemas {iv, ct}  (OPCIONAL)       o TXT de problemas sistêmicos (mesmo formato do sistemas.txt),
  *                                       cifrado com a MESMA chave dos dados e um iv próprio.
  *                                       Sem o campo, o app não mostra o card de sistemas.
+ *   bases    {iv, ct}  (OPCIONAL)       JSON da atualização das bases (último registro de cada base que compõe o
+ *                                       NS), cifrado com a MESMA chave dos dados e um iv próprio. Sem o campo, o app
+ *                                       não mostra o bloco "Atualização das bases".
  *
  * A chave da pessoa sai do código de acesso (PBKDF2 com o salt dela). Depois do
  * primeiro login fica guardada no aparelho como CryptoKey NÃO extraível: o código
@@ -127,18 +130,20 @@
     return abrirComChave(pacote, cred.chave, cred.id);
   }
 
-  // campo opcional "sistemas": null quando o dados.json não traz o campo
-  async function abrirSistemas(pacote, cred) {
+  // campo opcional ("sistemas" ou "bases"): null quando o dados.json não traz o campo
+  async function abrirCampo(pacote, cred, campo, nome) {
     conferePacote(pacote);
-    const s = pacote.sistemas;
+    const s = pacote[campo];
     if (s == null) return null;
-    if (typeof s !== 'object' || typeof s.iv !== 'string' || typeof s.ct !== 'string') { const e = new Error('Os dados de sistemas publicados estão em formato desconhecido.'); e.code = 'corrompido'; throw e; }
-    if (cred && cred.via === 'hub') return decifrar(await chaveDosDadosHub(pacote, cred), s, 'Os dados de sistemas publicados estão corrompidos.');
+    if (typeof s !== 'object' || typeof s.iv !== 'string' || typeof s.ct !== 'string') { const e = new Error(`Os dados de ${nome} publicados estão em formato desconhecido.`); e.code = 'corrompido'; throw e; }
+    if (cred && cred.via === 'hub') return decifrar(await chaveDosDadosHub(pacote, cred), s, `Os dados de ${nome} publicados estão corrompidos.`);
     const a = pacote.acessos[cred.id];
     if (a && a.salt !== cred.salt) { const e = new Error('Sua chave foi trocada. Entre de novo com a chave nova.'); e.code = 'sem_acesso'; throw e; }
     const k = await chaveDosDados(pacote, cred.chave, cred.id);
-    return decifrar(k, s, 'Os dados de sistemas publicados estão corrompidos.');
+    return decifrar(k, s, `Os dados de ${nome} publicados estão corrompidos.`);
   }
+  const abrirSistemas = (pacote, cred) => abrirCampo(pacote, cred, 'sistemas', 'sistemas');
+  const abrirBases = (pacote, cred) => abrirCampo(pacote, cred, 'bases', 'atualização das bases');
 
   // ---------- credencial no aparelho (IndexedDB guarda CryptoKey sem expor a chave) ----------
   const DB = 'co-painel-acesso', ST = 'cred';
@@ -162,6 +167,6 @@
   const salvarCred = c => op('readwrite', s => s.put(c, 'atual'));
   const apagarCred = () => op('readwrite', s => s.delete('atual'));
 
-  const api = { entrar, abrir, abrirSistemas, lerCred, lerCredHub, salvarCred, apagarCred, idDe, normMatricula, normCodigo, codigoValido, ALFABETO };
+  const api = { entrar, abrir, abrirSistemas, abrirBases, lerCred, lerCredHub, salvarCred, apagarCred, idDe, normMatricula, normCodigo, codigoValido, ALFABETO };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.NSCripto = api;
 })(typeof self !== 'undefined' ? self : this);

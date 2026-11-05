@@ -40,6 +40,11 @@ IPTBM (Oracle) ──► MAPI (servidor interno) ──► dados.json CRIPTOGRAF
    - campo **opcional** `sistemas:{iv,ct}` (desde a v3.7.0): o TXT de problemas sistêmicos (mesmo
      formato do `sistemas.txt`), cifrado com a **mesma chave** de `dados` e um `iv` próprio. Sem o
      campo, o app não mostra o card de sistemas; erro só nesse campo nunca bloqueia o NS;
+   - campo **opcional** `bases:{iv,ct}` (desde a v3.10.0): JSON da **atualização das bases** (`{v:1, coletado_em, segmentos:{B2C|COE:
+     {estado:'ok'|'atencao', mensagem, bases:[{id, nome, ultimo, precisao:'hora'|'dia', atrasada}]}}}`), cifrado com a **mesma
+     chave** de `dados` e um `iv` próprio. Só informa: **não muda nenhum número do NS**. A regra de atraso é do MAPI
+     (`ns_bases.py`); o app só desenha (bloco "Atualização das bases" acima dos cards e a etiqueta "em consolidação" no NS e nas
+     chamadas do período mais recente). Fica só na memória (hora velha enganaria); erro aqui nunca bloqueia o NS;
    - campo **opcional** `hub:{acessos:{id_hub:{salt, iv, ct}}}` (desde a v3.8.0, login único): a chave dos dados embrulhada
      com a chave do **HUB dos apps** de quem tem o NS Painel no perfil. `id_hub` = SHA-256 de `"hub:" + MATRÍCULA`, `salt`
      = o do HUB. O app lê a credencial que o HUB guardou no IndexedDB `co-hub-acesso` (mesmo endereço) e **só lê**:
@@ -69,7 +74,9 @@ IPTBM (Oracle) ──► MAPI (servidor interno) ──► dados.json CRIPTOGRAF
 | Mensagem de compartilhar (WhatsApp/Teams) | `conteudoMsg()`, `textoCompartilhar()`, `htmlTeams()`, `svgCompartilhar()` em `app.js` |
 | Tela de login | `renderLogin()` em `app.js` |
 | Card de problemas sistêmicos (matriz, lista, detalhe) | `sistemas.js` (dados: `sistemasDoPacote()` em `app.js`) |
-| **Ordem, colunas ou regra dos dados que vêm do banco** | **não é aqui**: é a consulta `sql/ns_painel_b2c_suporte.sql` no repositório do MAPI |
+| Bloco "Atualização das bases" e a etiqueta "em consolidação" | `cardBases()`, `basesDoPacote()` e `tagConsolida()` em `app.js`; estilo `.bases-card` e `.prov` no `index.html` |
+| **Ordem, colunas ou regra dos dados que vêm do banco** | **não é aqui**: é a consulta `sql/ns_painel_nivel_servico.sql` no repositório do MAPI |
+| **Quais bases aparecem, nomes, regra de atraso** | **não é aqui**: `ns_bases.py` e `sql/ns_painel_bases.sql` no MAPI |
 
 ## Antes de cada push
 
