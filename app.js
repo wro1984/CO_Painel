@@ -1,7 +1,7 @@
 /* NS Painel — app (v3.2: dados criptografados publicados pelo MAPI, com acesso aprovado) */
 (function () {
   'use strict';
-  const APP_VERSION = '3.10.0';
+  const APP_VERSION = '3.11.0';
   const P = window.NSData;
   const K = window.NSCripto;
   // Problemas sistêmicos (sistemas.js): só com a mesma versão do app (evita misturar arquivos de versões diferentes)
@@ -391,28 +391,42 @@
     if (!isFinite(m) || m < 0) return '';
     if (m < 60) return `há ${m} min`;
     const h = Math.floor(m / 60), r = m % 60;
-    return h >= 24 ? `há ${Math.floor(h / 24)} d` : `há ${h} h${r ? ' ' + String(r).padStart(2, '0') + ' min' : ''}`;
+    if (h >= 24) { const d = Math.floor(h / 24), hh = h % 24; return `há ${d} d${hh ? ' ' + hh + ' h' : ''}`; }
+    return `há ${h} h${r ? ' ' + String(r).padStart(2, '0') + ' min' : ''}`;
   }
+  // Faixa recolhida: verde = bases atualizadas; amarela = alguma base há mais de 1 dia sem atualizar. Ao tocar, abre a hora do
+  // último registro de cada base. O NS fecha o dia anterior (não é online): poucas horas de diferença entre as bases é normal.
+  let basesAberto = false;
   function cardBases() {
     const b = basesSeg();
     if (!b || !Array.isArray(b.bases) || !b.bases.length) return '';
     const ate = basesInfo.coletado_em || '';
     const atenc = b.estado === 'atencao';
+    const titulo = b.titulo || (atenc ? 'Base desatualizada' : b.bases.length > 1 ? 'Bases atualizadas' : 'Base atualizada');
     const linhas = b.bases.map(x => {
       const quando = !x.ultimo ? 'sem registro' : x.precisao === 'dia' ? `dados até ${x.ultimo.slice(8, 10)}/${x.ultimo.slice(5, 7)}` : quandoBase(x.ultimo);
       const rel = x.ultimo && x.precisao !== 'dia' && ate ? haQuanto(x.ultimo, ate) : '';
       return `<div class="base${x.atrasada ? ' atr' : ''}"><i class="pt${x.atrasada ? ' w' : ''}" aria-hidden="true"></i><span class="n">${esc(x.nome)}</span><span class="h">${esc(quando)}${rel ? `<small>${esc(rel)}</small>` : ''}</span></div>`;
     }).join('');
-    const titulo = atenc ? 'Número ainda em consolidação' : b.bases.length > 1 ? 'Bases em dia' : 'Base em dia';
-    const texto = atenc ? b.mensagem.replace(/^Número ainda em consolidação\.\s*/, '') : b.mensagem;
-    const nota = ate ? `Hora do último registro de cada base, na coleta de ${esc(quandoBase(ate))}.` : '';
-    return `<div class="card bases-card" role="group" aria-label="Atualização das bases">
-      <h2>Atualização das bases</h2>
-      <div class="faixa ${atenc ? 'warn' : 'okf'}"><span class="ic" aria-hidden="true">${atenc ? '⚠' : '✔'}</span><span><b>${esc(titulo)}</b>${esc(texto)}</span></div>
-      <div class="bases">${linhas}</div>
-      <div class="nota">${nota}</div></div>`;
+    const nota = ate ? `Hora do último registro de cada base, na coleta de ${esc(quandoBase(ate))}. O NS é do dia anterior: poucas horas de diferença entre as bases é normal.` : '';
+    return `<div class="bases-card ${atenc ? 'warn' : 'okf'}" role="group" aria-label="Atualização das bases">
+      <button type="button" class="bases-cab" id="bBases" aria-expanded="${basesAberto}" aria-controls="basesDet">
+        <span class="ic" aria-hidden="true">${atenc ? '⚠' : '✔'}</span>
+        <span class="tx"><b>${esc(titulo)}</b><span>${esc(b.mensagem || '')}</span></span>
+        <span class="chev" aria-hidden="true">⌄</span>
+      </button>
+      <div class="bases-det" id="basesDet"${basesAberto ? '' : ' hidden'}><div class="bases">${linhas}</div><div class="nota">${nota}</div></div></div>`;
   }
-  const tagConsolida = sel0 => (basesAtencao() && !sel0 ? ' <span class="prov">em consolidação</span>' : '');
+  function ligarBases() {
+    const bt = $('#bBases');
+    if (!bt) return;
+    bt.onclick = () => {
+      basesAberto = !basesAberto;
+      bt.setAttribute('aria-expanded', String(basesAberto));
+      $('#basesDet').hidden = !basesAberto;
+    };
+  }
+  const tagConsolida = sel0 => (basesAtencao() && !sel0 ? ' <span class="prov">base desatualizada</span>' : '');
 
   function redesenharPainel() {
     if (view !== 'painel' || preview || !snaps.length) return;
@@ -739,6 +753,7 @@
       <div id="pag">${painelTipo(modo, items, serie, all)}</div>`;
     modosDisp = ORDEM_MODOS.filter(t => por(t).length);
     dicaArrastar();
+    ligarBases();
     main.querySelectorAll('.seg button').forEach(b => b.onclick = () => { if (b.dataset.m !== modo) setModo(b.dataset.m); });
     if ($('#bLimpar')) $('#bLimpar').onclick = () => toggleSel(sel);
     // filtro por dia da semana: tocar liga; tocar no mesmo de novo ou no ✕ desliga

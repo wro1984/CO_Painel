@@ -327,22 +327,28 @@ table.conf td.nd{color:var(--ink3)}
 .shs dl.det .grp{grid-column:1 / -1;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--p700);padding:12px 0 2px}
 @media (prefers-color-scheme: dark){.shs dl.det .grp{color:#d3b5f0}}
 
-/* ===== Atualização das bases (v3.10.0): bloco acima dos cards; só informa, não muda número ===== */
-.bases-card{padding:12px 14px}
-.bases-card .faixa{display:flex;gap:10px;align-items:flex-start;border-radius:12px;padding:8px 12px;margin-bottom:8px;font-size:12.5px;line-height:1.35}
-.bases-card .faixa .ic{font-size:17px;line-height:1.1}
-.bases-card .faixa b{display:block;font-size:13.5px;margin-bottom:1px}
-.bases-card .faixa.okf{background:var(--okbg);color:var(--ok)}
-.bases-card .faixa.warn{background:var(--warnbg);color:var(--warn)}
-.bases-card .base{display:grid;grid-template-columns:12px 1fr auto;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}
-.bases-card .base:first-child{border-top:0}
-.bases-card .pt{width:10px;height:10px;border-radius:50%;background:var(--ok);display:inline-block}
-.bases-card .pt.w{background:var(--laranjaL,#FF9901)}
-.bases-card .base .n{font-weight:650;font-size:14px;min-width:0}
-.bases-card .base .h{text-align:right;font-variant-numeric:tabular-nums;font-weight:700;font-size:14px;white-space:nowrap}
-.bases-card .base .h small{font-weight:500;font-size:11.5px;color:var(--ink3);margin-left:6px}
-.bases-card .base.atr .h,.bases-card .base.atr .h small{color:var(--warn)}
-.bases-card .nota{font-size:11.5px;color:var(--ink3);margin-top:8px;line-height:1.35}
+/* ===== Atualização das bases (v3.11.0): faixa recolhida acima dos cards; só informa, não muda número ===== */
+.bases-card{border-radius:var(--r);margin-bottom:12px;border:1px solid var(--line);overflow:hidden;background:var(--card)}
+.bases-card.okf{background:var(--okbg);border-color:transparent;color:var(--ok)}
+.bases-card.warn{background:var(--warnbg);border-color:transparent;color:var(--warn)}
+.bases-cab{display:flex;gap:10px;align-items:center;width:100%;padding:10px 14px;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;min-height:48px}
+.bases-cab .ic{font-size:17px;line-height:1}
+.bases-cab .tx{flex:1;min-width:0;display:block;font-size:12.5px;line-height:1.35}
+.bases-cab .tx b{display:block;font-size:13.5px}
+.bases-cab .chev{font-size:18px;line-height:1;transition:transform .15s}
+.bases-cab[aria-expanded="true"] .chev{transform:rotate(180deg)}
+.bases-cab:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.bases-det{padding:2px 14px 12px;background:var(--card);color:var(--ink)}
+.bases-det[hidden]{display:none}
+.bases-det .base{display:grid;grid-template-columns:12px 1fr auto;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}
+.bases-det .base:first-child{border-top:0}
+.bases-det .pt{width:10px;height:10px;border-radius:50%;background:var(--ok);display:inline-block}
+.bases-det .pt.w{background:var(--laranjaL,#FF9901)}
+.bases-det .base .n{font-weight:650;font-size:14px;min-width:0}
+.bases-det .base .h{text-align:right;font-variant-numeric:tabular-nums;font-weight:700;font-size:14px;white-space:nowrap}
+.bases-det .base .h small{font-weight:500;font-size:11.5px;color:var(--ink3);margin-left:6px}
+.bases-det .base.atr .h,.bases-det .base.atr .h small{color:var(--warn)}
+.bases-det .nota{font-size:11.5px;color:var(--ink3);margin-top:8px;line-height:1.35}
 .kpi{min-width:0}
 .prov{display:block;width:fit-content;max-width:100%;background:var(--warnbg);color:var(--warn);border-radius:10px;padding:1px 8px;font-size:10.5px;font-weight:700;margin:3px 0 1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
