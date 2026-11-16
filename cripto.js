@@ -130,7 +130,7 @@
     return abrirComChave(pacote, cred.chave, cred.id);
   }
 
-  // campo opcional ("sistemas" ou "bases"): null quando o dados.json não traz o campo
+  // campo opcional ("sistemas", "bases" ou "manobra"): null quando o dados.json não traz o campo
   async function abrirCampo(pacote, cred, campo, nome) {
     conferePacote(pacote);
     const s = pacote[campo];
@@ -144,6 +144,7 @@
   }
   const abrirSistemas = (pacote, cred) => abrirCampo(pacote, cred, 'sistemas', 'sistemas');
   const abrirBases = (pacote, cred) => abrirCampo(pacote, cred, 'bases', 'atualização das bases');
+  const abrirManobra = (pacote, cred) => abrirCampo(pacote, cred, 'manobra', 'humano × robô da Manobra');
 
   // ---------- credencial no aparelho (IndexedDB guarda CryptoKey sem expor a chave) ----------
   const DB = 'co-painel-acesso', ST = 'cred';
@@ -167,6 +168,6 @@
   const salvarCred = c => op('readwrite', s => s.put(c, 'atual'));
   const apagarCred = () => op('readwrite', s => s.delete('atual'));
 
-  const api = { entrar, abrir, abrirSistemas, abrirBases, lerCred, lerCredHub, salvarCred, apagarCred, idDe, normMatricula, normCodigo, codigoValido, ALFABETO };
+  const api = { entrar, abrir, abrirSistemas, abrirBases, abrirManobra, lerCred, lerCredHub, salvarCred, apagarCred, idDe, normMatricula, normCodigo, codigoValido, ALFABETO };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.NSCripto = api;
 })(typeof self !== 'undefined' ? self : this);

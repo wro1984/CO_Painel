@@ -47,6 +47,11 @@ IPTBM (Oracle) ──► MAPI (servidor interno) ──► dados.json CRIPTOGRAF
      **recolhida** acima dos cards (verde = atualizadas, amarela = alguma desatualizada), que abre ao tocar com a hora do último
      registro de cada base; com a faixa amarela, o NS e as chamadas do período mais recente ganham a etiqueta "base
      desatualizada". Fica só na memória (hora velha enganaria); erro aqui nunca bloqueia o NS;
+   - campo **opcional** `manobra:{iv,ct}` (desde a v3.12.0): JSON da **divisão humano × robô da Manobra** (`{v:1, inicio, ate, corte_min, dias:[{d, h:[solicitações, atendidas, no_corte], r:[...]}]}`;
+     `h` = humano, `r` = robô), cifrado com a **mesma chave** de `dados` e um `iv` próprio. Vem do MAPI (`ns_manobra.frentes_json`, lido direto
+     da origem .242). Só informa: **não muda nenhum número do NS** nem o TXT. `frentes.js` lê, soma por período e **confere**: o humano daqui tem que
+     bater com a linha da Manobra (`B2C_MANOBRA`) do TXT (volume, atendidas, no corte); se não bater, ou o formato for outro, o bloco não aparece.
+     Só aparece no segmento `B2C_MANOBRA`; B2C e COE nunca o usam. Fica só na memória. Erro aqui nunca bloqueia o NS;
    - campo **opcional** `hub:{acessos:{id_hub:{salt, iv, ct}}}` (desde a v3.8.0, login único): a chave dos dados embrulhada
      com a chave do **HUB dos apps** de quem tem o NS Painel no perfil. `id_hub` = SHA-256 de `"hub:" + MATRÍCULA`, `salt`
      = o do HUB. O app lê a credencial que o HUB guardou no IndexedDB `co-hub-acesso` (mesmo endereço) e **só lê**:
@@ -76,14 +81,15 @@ IPTBM (Oracle) ──► MAPI (servidor interno) ──► dados.json CRIPTOGRAF
 | Mensagem de compartilhar (WhatsApp/Teams) | `conteudoMsg()`, `textoCompartilhar()`, `htmlTeams()`, `svgCompartilhar()` em `app.js` |
 | Tela de login | `renderLogin()` em `app.js` |
 | Card de problemas sistêmicos (matriz, lista, detalhe) | `sistemas.js` (dados: `sistemasDoPacote()` em `app.js`) |
+| Bloco "Quem atendeu na Manobra" (humano × robô × total) e os rótulos "· humano" dos cartões da Manobra | `cardFrentes()` e `frentesPeriodo()` em `app.js`; leitura, soma e conferência em `frentes.js` (testes: `node --test ferramentas/frentes.test.js`); estilo `.frentes`/`.fr-*` no `index.html` |
 | Bloco "Atualização das bases" e a etiqueta "base desatualizada" | `cardBases()`, `basesDoPacote()` e `tagConsolida()` em `app.js`; estilo `.bases-card` e `.prov` no `index.html` |
 | **Ordem, colunas ou regra dos dados que vêm do banco** | **não é aqui**: é a consulta `sql/ns_painel_nivel_servico.sql` no repositório do MAPI |
 | **Quais bases aparecem, nomes, regra de atraso** | **não é aqui**: `ns_bases.py` e `sql/ns_painel_bases.sql` no MAPI |
 
 ## Antes de cada push
 
-1. **Atualize a versão** em três lugares, com o mesmo número: `APP_VERSION` em `app.js`, `VERSION` em
-   `sw.js` e `VERSAO` em `sistemas.js` (com versões diferentes o card de sistemas não liga). Sem isso o celular continua com a versão antiga em cache.
+1. **Atualize a versão** em quatro lugares, com o mesmo número: `APP_VERSION` em `app.js`, `VERSION` em
+   `sw.js`, `VERSAO` em `sistemas.js` e `VERSAO` em `frentes.js` (com versões diferentes o card de sistemas e o da Manobra não ligam; o teste de `frentes.js` confere). Sem isso o celular continua com a versão antiga em cache.
 2. Arquivo novo que o app usa? Inclua em `CORE` no `sw.js` (senão não funciona offline).
 3. Teste localmente (abaixo), no tamanho de celular (~390 px), em claro e escuro.
 4. `git pull` antes do push: o MAPI faz commits frequentes no `dados.json`. Use merge, não force-push.
@@ -111,6 +117,7 @@ Sem servidor (abrindo o `index.html` direto do disco) o app não busca dados nem
 | `app.js` | estado, telas, gráficos, compartilhar, histórico, login e saída |
 | `parser.js` | leitura e conferência do TXT (também roda no Node) |
 | `sistemas.js` | card de problemas sistêmicos (matriz sistemas × períodos, lista e detalhe dos chamados) |
+| `frentes.js` | Manobra: quem atendeu (humano, robô e total): leitura do campo `manobra`, soma por período e conferência com o TXT (também roda no Node) |
 | `cripto.js` | login, chave guardada no aparelho (CryptoKey não extraível) e abertura do `dados.json` |
 | `sw.js` | cache para uso offline; `dados.json` sempre da rede quando houver |
 | `manifest.webmanifest`, `icons/` | instalação no celular |

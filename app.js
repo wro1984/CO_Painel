@@ -1,11 +1,12 @@
 /* NS Painel — app (v3.2: dados criptografados publicados pelo MAPI, com acesso aprovado) */
 (function () {
   'use strict';
-  const APP_VERSION = '3.11.0';
+  const APP_VERSION = '3.12.0';
   const P = window.NSData;
   const K = window.NSCripto;
   // Problemas sistêmicos (sistemas.js): só com a mesma versão do app (evita misturar arquivos de versões diferentes)
   const SIS = window.NSSistemas && window.NSSistemas.versao === APP_VERSION ? window.NSSistemas : null;
+  const FRT = window.NSFrentes && window.NSFrentes.VERSAO === APP_VERSION ? window.NSFrentes : null;   // Manobra: humano × robô
   const $ = s => document.querySelector(s);
   const main = $('#main');
   $('#ver').textContent = 'v' + APP_VERSION;
@@ -199,6 +200,7 @@
     }
     await sistemasDoPacote(b.pacote).catch(() => {});
     await basesDoPacote(b.pacote).catch(() => {});
+    await frentesDoPacote(b.pacote).catch(() => {});
     const { text } = P.decode(bytes);
     const pr = P.parse(text);
     const lm = b.lm || (b.pacote.gerado_em ? Date.parse(b.pacote.gerado_em) : null);
@@ -223,7 +225,7 @@
     try { await K.apagarCred(); } catch (e) {}
     try { for (const s of snaps) await dbDel(s.id); } catch (e) {}
     await apagarSistemas();
-    basesInfo = null;
+    basesInfo = null; frentesInfo = null;
     cred = null; snaps = []; preview = null; pubStatus = null;
     loginMsg = motivo || '';
     render();
@@ -276,6 +278,7 @@
         }
         await sistemasDoPacote(pacoteLogin.pacote).catch(() => {});
         await basesDoPacote(pacoteLogin.pacote).catch(() => {});
+        await frentesDoPacote(pacoteLogin.pacote).catch(() => {});
         pacoteLogin = null;
         toast('Acesso liberado neste aparelho ✓');
         go(snaps.length ? 'painel' : 'dados');
@@ -426,6 +429,53 @@
       $('#basesDet').hidden = !basesAberto;
     };
   }
+  // ---------- Manobra: humano × robô ----------
+  // Campo opcional "manobra" do dados.json (cifrado com a mesma chave): por dia, o que o humano e o robô fizeram na Manobra (frentes.js).
+  // Só informa: não muda nenhum número do NS. Fica na memória. Só aparece na aba da Manobra e quando o humano daqui bate com a linha da
+  // Manobra do NS (volume, atendidas, no corte); qualquer diferença esconde o bloco. Erro aqui nunca bloqueia o NS.
+  let frentesInfo = null;
+  async function frentesDoPacote(pacote) {
+    if (!cred || !FRT) return;
+    let bytes;
+    try { bytes = await K.abrirManobra(pacote, cred); }
+    catch (e) { return; }                                   // acesso perdido é tratado na abertura dos dados
+    const novo = bytes ? FRT.ler(P.decode(bytes).text) : null;
+    const mudou = JSON.stringify(novo) !== JSON.stringify(frentesInfo);
+    frentesInfo = novo;
+    if (mudou) redesenharPainel();
+  }
+  function frentesDoMapi(texto) { frentesInfo = FRT && texto != null && String(texto).trim() !== '' ? FRT.ler(texto) : null; }
+  // soma do período r (humano, robô, total), só na aba da Manobra e se conferir com a linha do NS; senão null
+  function frentesPeriodo(r) {
+    if (!FRT || !frentesInfo || !r || segAtual() !== FRT.SEGMENTO) return null;
+    const s = FRT.somar(frentesInfo, r.inicio, r.fim);
+    return FRT.confere(s, r) ? s : null;
+  }
+  const nsFrente = (f, meta) => { const n = FRT.ns(f); return n == null ? '—' : `<span class="pill ${situacao(n, meta)}">${fmtPct(n)}</span>`; };
+  function cardFrentes(t, items, cur) {
+    const s = frentesPeriodo(cur); if (!s) return '';
+    const corte = corteAtual(), meta = cur.meta;
+    // grade: uma coluna por frente (Total · Humano · Robô) e uma linha por medida; o rótulo fica na primeira coluna (cabe em 390 px)
+    const cab = [['Total', 'tot'], ['Humano', 'hum'], ['Robô', 'rob']].map(([n, c]) => `<div class="h ${c}">${n}</div>`).join('');
+    const linha = (rot, fn, cls = '') => `<div class="r ${cls}">${rot}</div>` + [s.t, s.h, s.r].map(f => `<div class="c ${cls}">${fn(f)}</div>`).join('');
+    const ph = FRT.parte(s.h, s.t), pr = FRT.parte(s.r, s.t);
+    const pct = v => v == null ? '—' : p1(v) + '%';
+    const barra = ph == null ? '' : `<div class="fr-bar" role="img" aria-label="Humano ${pct(ph)} e robô ${pct(pr)} das solicitações"><span class="h" style="width:${(ph * 100).toFixed(2)}%"></span><span class="r" style="width:${(pr * 100).toFixed(2)}%"></span></div>
+      <div class="fr-leg"><span><i class="h"></i>Humano ${pct(ph)}</span><span><i class="r"></i>Robô ${pct(pr)}</span><small>das solicitações</small></div>`;
+    const linhas = [...items].reverse().map(r => {
+      const x = frentesPeriodo(r);
+      const cel = f => x ? `<td>${nsFrente(f, r.meta)}<small class="fr-v">${fmtInt(f.vol)}</small></td>` : '<td class="nd">—</td>';
+      return `<tr data-ordem="${r.ordem}" class="${r.ordem === sel ? 'sel' : ''}" aria-selected="${r.ordem === sel}"><td>${esc(P.rotulo(r, t !== 'DIA'))}</td>${cel(x && x.t)}${cel(x && x.h)}${cel(x && x.r)}</tr>`;
+    }).join('');
+    return `<div class="card frentes"><h2>Quem atendeu na Manobra</h2>
+      <div class="fr-sub">${esc(P.rotulo(cur))} · humano, robô e os dois juntos</div>
+      ${barra}
+      <div class="fr-grid" role="table" aria-label="Total, humano e robô"><div></div>${cab}${linha('NS ' + corte + ' min', f => nsFrente(f, meta), 'ns')}${linha('Solicitações', f => fmtInt(f.vol))}${linha('Atendidas', f => fmtInt(f.at))}${linha('Em ' + corte + ' min', f => fmtInt(f.cor))}</div>
+      <div class="small muted" style="margin-top:8px">NS = atendidas em até ${corte} min ÷ atendidas. <b>Humano</b> é o NS da Manobra (os mesmos números dos cartões acima); <b>Robô</b> é a automação e não entra nesse NS; <b>Total</b> soma os dois.</div>
+      <div style="overflow-x:auto;margin-top:8px"><table class="conf tsel fr-tab"><thead><tr><th>${t === 'DIA' ? 'DIA' : t === 'SEMANA' ? 'SEMANA' : 'MÊS'}</th><th>TOTAL</th><th>HUMANO</th><th>ROBÔ</th></tr></thead><tbody>${linhas}</tbody></table></div>
+      <div class="small muted" style="margin-top:6px">Em cada célula: NS e, embaixo, as solicitações.</div></div>`;
+  }
+
   const tagConsolida = sel0 => (basesAtencao() && !sel0 ? ' <span class="prov">base desatualizada</span>' : '');
 
   function redesenharPainel() {
@@ -770,6 +820,7 @@
     const prev = ic > 0 ? serie[ic - 1] : null;
     const dPP = prev && cur.ns != null && prev.ns != null ? difPP(cur.ns, prev.ns) : null;
     const kc = selRow ? 'kpi ksel' : 'kpi';
+    const hum = frentesPeriodo(cur) ? ' · humano' : '';   // aba da Manobra com a divisão: os cartões são só do humano
     // 4 cards no mesmo padrão: título · valor · comparação com o período anterior
     // 1) NS  2) Chamadas recebidas (total do período, sem média)  3) Distância da meta + situação  4) Período
     const vsPrev = prev ? ` vs ${esc(nomePrev(t, prev))}` : '';
@@ -778,8 +829,8 @@
     const sNs = dPP == null ? 'sem período anterior' : `${pp(dPP)}${vsPrev}`;
     const dMeta = cur.ns == null ? null : difPP(cur.ns, cur.meta);
     const k = `
-        <div class="${kc} kns"><div class="l">NS ${corteAtual()} min${tagConsolida(selRow)}</div><div class="v">${fmtPct(cur.ns)}</div><div class="s">${sNs}</div></div>
-        <div class="${kc} kvol"><div class="l">Chamadas recebidas${tagConsolida(selRow)}</div><div class="v">${fmtInt(cur.volume)}</div><div class="s">${sVol}</div></div>
+        <div class="${kc} kns"><div class="l">NS ${corteAtual()} min${hum}${tagConsolida(selRow)}</div><div class="v">${fmtPct(cur.ns)}</div><div class="s">${sNs}</div></div>
+        <div class="${kc} kvol"><div class="l">${hum ? 'Solicitações' : 'Chamadas recebidas'}${hum}${tagConsolida(selRow)}</div><div class="v">${fmtInt(cur.volume)}</div><div class="s">${sVol}</div></div>
         <div class="${kc} kdist"><div class="l">Distância da meta</div><div class="v">${dMeta == null ? '—' : pp(dMeta)}</div><div class="s">${cur.status ? `<span class="pill ${cur.status}">${stNome(cur.status)}</span>` : ''}</div></div>
         <div class="${kc} kper"><div class="l">${t === 'DIA' && filtroDia != null && !selRow ? WD_ULTIMO[filtroDia] : tituloPeriodo(t, !!selRow)}</div><div class="v">${esc(valorPeriodo(cur))}</div><div class="s">${situacaoPeriodo(cur)}</div></div>`;
     const fd = t === 'DIA' ? filtroDia : null;
@@ -797,6 +848,7 @@
     return `
       <div class="kpis">${k}</div>
       ${filtro}
+      ${cardFrentes(t, items, cur)}
       <div class="card chart"><h2>${t === 'DIA' ? (fd != null ? `Chamadas recebidas e NS · ${WD_PLURAL[fd]}` : 'Chamadas recebidas e NS por dia') : t === 'SEMANA' ? 'Chamadas recebidas e NS por semana' : 'Chamadas recebidas e NS por mês'}</h2>${chartVol(items, t)}
         <div class="legend"><span><i style="background:var(--barR)"></i>chamadas recebidas</span><span><i class="ln mk" style="border-color:var(--laranjaL)"></i>NS ${corteAtual()} min (eixo à direita)</span></div>
         <div class="cap${selRow ? ' capsel' : ''}" id="cap2">${selRow ? cap : (t === 'DIA' ? cap : `Hachurado = ${t === 'MES' ? 'mês' : 'semana'} em aberto (total parcial). ` + dica)}</div></div>
@@ -1331,16 +1383,17 @@
     window.addEventListener('message', e => {
       if (e.source !== window.parent || !e.data || e.data.tipo !== 'co-painel:dados') return;
       const d = e.data;
-      if (d.erro) { snaps = []; sistemasDoMapi(null); mapiInfo = { erro: d.erro }; render(); return; }
+      if (d.erro) { snaps = []; sistemasDoMapi(null); frentesDoMapi(null); mapiInfo = { erro: d.erro }; render(); return; }
       const texto = String(d.texto || '');
       const pr = P.parse(texto);
       if (pr.erros.length) {
-        snaps = []; sistemasDoMapi(null);
+        snaps = []; sistemasDoMapi(null); frentesDoMapi(null);
         mapiInfo = { erro: `Os dados têm ${pr.erros.length} erro(s): ` + pr.erros.slice(0, 3).map(x => x.msg).join(' · ') };
       } else {
         snaps = [montarSnap(pr, P.hash(texto), 'publicado', 'MAPI', d.publicadoEm ? Date.parse(d.publicadoEm) : Date.now())];
         sistemasDoMapi(d.sistemas);
         basesDoMapi(d.bases);
+        frentesDoMapi(d.manobra);
         mapiInfo = { origem: d.origem || '' };
       }
       sel = null; render();
@@ -1360,5 +1413,5 @@
   if (MODO_MAPI && $('#bHub')) $('#bHub').hidden = true;   // dentro do MAPI não há HUB para onde voltar
   $('#bShare').addEventListener('click', abrirCompartilhar);
   $('#bSeg').addEventListener('click', abrirMenuSeg);
-  window.__ns = { version: APP_VERSION, state: () => ({ snaps, preview, view, modo, pubStatus, logado: !!cred, segmento: segAtual(), segmentos: segmentosDisp(), corte: corteAtual(), bases: basesInfo ? { segmentos: Object.keys(basesInfo.segmentos), atencao: basesAtencao() } : null, sistemas: { carregado: !!sisDados, itens: sisDados ? sisDados.itens.length : 0, hash: sisHash, aviso: sisAviso, modulo: !!SIS } }), reload, buscarPublicado, share: { dados: dadosCompartilhar, texto: () => textoCompartilhar(), teams: () => htmlTeams(), simples: () => textoSimples(), svg: () => svgCompartilhar(dadosCompartilhar()), png: async () => { const b = await pngDeSvg(svgCompartilhar(dadosCompartilhar())); return { size: b.size, type: b.type, url: await new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b); }) }; } } };
+  window.__ns = { version: APP_VERSION, state: () => ({ snaps, preview, view, modo, pubStatus, logado: !!cred, segmento: segAtual(), segmentos: segmentosDisp(), corte: corteAtual(), bases: basesInfo ? { segmentos: Object.keys(basesInfo.segmentos), atencao: basesAtencao() } : null, frentes: frentesInfo ? { dias: frentesInfo.dias.length, ate: frentesInfo.ate, visivel: !!document.querySelector('.card.frentes') } : null, sistemas: { carregado: !!sisDados, itens: sisDados ? sisDados.itens.length : 0, hash: sisHash, aviso: sisAviso, modulo: !!SIS } }), reload, buscarPublicado, share: { dados: dadosCompartilhar, texto: () => textoCompartilhar(), teams: () => htmlTeams(), simples: () => textoSimples(), svg: () => svgCompartilhar(dadosCompartilhar()), png: async () => { const b = await pngDeSvg(svgCompartilhar(dadosCompartilhar())); return { size: b.size, type: b.type, url: await new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b); }) }; } } };
 })();
