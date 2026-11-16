@@ -327,6 +327,25 @@ table.conf td.nd{color:var(--ink3)}
 .shs dl.det .grp{grid-column:1 / -1;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--p700);padding:12px 0 2px}
 @media (prefers-color-scheme: dark){.shs dl.det .grp{color:#d3b5f0}}
 
+/* ===== Manobra: quem atendeu (v3.12.0): humano × robô × total; só informa, não muda número ===== */
+:root{--frH:var(--p500);--frR:#FF9901}
+@media (prefers-color-scheme: dark){:root{--frH:#b48fd3;--frR:#FFB038}}
+.frentes .fr-sub{font-size:12px;color:var(--ink2);margin:-4px 0 10px}
+.fr-bar{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--line)}
+.fr-bar span{display:block;height:100%} .fr-bar .h{background:var(--frH)} .fr-bar .r{background:var(--frR)}
+.fr-leg{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;font-size:12px;color:var(--ink2);margin:6px 0 12px}
+.fr-leg span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.fr-leg i{width:10px;height:10px;border-radius:3px;display:inline-block} .fr-leg i.h{background:var(--frH)} .fr-leg i.r{background:var(--frR)}
+.fr-leg small{color:var(--ink3)}
+.fr-grid{display:grid;grid-template-columns:minmax(0,1.15fr) repeat(3,minmax(0,1fr));align-items:center;font-variant-numeric:tabular-nums}
+.fr-grid>div{padding:7px 4px;border-top:1px solid var(--line);text-align:right;font-size:13px;white-space:nowrap}
+.fr-grid>div:nth-child(4n+1){text-align:left;color:var(--ink2);font-size:12px}
+.fr-grid .h{font-size:12px;font-weight:700;color:var(--ink2);border-top:0;border-bottom:3px solid var(--line);padding-top:0}
+.fr-grid .h.tot{border-bottom-color:var(--ink2)} .fr-grid .h.hum{border-bottom-color:var(--frH)} .fr-grid .h.rob{border-bottom-color:var(--frR)}
+.fr-grid>div:first-child{border-top:0}
+.fr-grid .ns{padding:9px 4px}
+table.fr-tab td{vertical-align:middle;white-space:nowrap} table.fr-tab td.nd{color:var(--ink3)}
+table.fr-tab .fr-v{display:block;font:11px system-ui;color:var(--ink3);margin-top:2px}
 /* ===== Atualização das bases (v3.11.0): faixa recolhida acima dos cards; só informa, não muda número ===== */
 .bases-card{border-radius:var(--r);margin-bottom:12px;border:1px solid var(--line);overflow:hidden;background:var(--card)}
 .bases-card.okf{background:var(--okbg);border-color:transparent;color:var(--ok)}
@@ -367,6 +386,7 @@ table.conf td.nd{color:var(--ink3)}
 <script src="parser.js"></script>
 <script src="cripto.js"></script>
 <script src="sistemas.js"></script>
+<script src="frentes.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
