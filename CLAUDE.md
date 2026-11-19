@@ -154,3 +154,10 @@ e não mude os nomes das mensagens sem mudar `static/js/ns_painel.js` no MAPI ju
 A branch `rollback-v3.6.0` guarda o app antes dos problemas sistêmicos (3.7.x). Para voltar: restaurar na `main`
 os arquivos dessa branch (um commit novo, sem reescrever o histórico). O `dados.json` que traz o campo
 `sistemas` continua válido na 3.6.0, que simplesmente o ignora.
+
+## CO × TEL (desde a v3.13.0)
+
+O MAPI publica a TEL/parceira como segmento próprio (`B2C_TEL`, a partir de 16/11/2026; o B2C é só o CO). No topo do B2C e da TEL, `cardCoTel()` em `app.js`
+mostra **dois cards lado a lado (CO e TEL)** com o NS do período, a variação contra o período anterior e as atendidas, e a linha do **consolidado CO + TEL**
+(no corte ÷ atendidas, somados). Tocar num card troca o segmento. O menu ganha o item **TEL** (`nomeSeg()`: `B2C_TEL` → "TEL", `B2C_MANOBRA` → "Manobra offline").
+O quadro só aparece quando há a TEL no período (antes de 16/11 não há). Estilo `.cotel`/`.cons` no `index.html`.
