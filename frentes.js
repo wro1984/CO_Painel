@@ -10,7 +10,7 @@
  */
 (function (root) {
   'use strict';
-  const VERSAO = '3.12.0';
+  const VERSAO = '3.13.0';
   const SEGMENTO = 'B2C_MANOBRA';
   const ISO = /^\d{4}-\d{2}-\d{2}$/;
   const trio = a => Array.isArray(a) && a.length === 3 && a.every(n => Number.isInteger(n) && n >= 0) && a[1] <= a[0] && a[2] <= a[1];

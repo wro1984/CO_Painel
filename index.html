@@ -370,6 +370,26 @@ table.fr-tab .fr-v{display:block;font:11px system-ui;color:var(--ink3);margin-to
 .bases-det .nota{font-size:11.5px;color:var(--ink3);margin-top:8px;line-height:1.35}
 .kpi{min-width:0}
 .prov{display:block;width:fit-content;max-width:100%;background:var(--warnbg);color:var(--warn);border-radius:10px;padding:1px 8px;font-size:10.5px;font-weight:700;margin:3px 0 1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* CO × TEL (v3.13.0): dois cards lado a lado e o consolidado embaixo */
+.cotelc{padding:12px}
+.cotel{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cotel .bx{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 12px 12px 16px;box-shadow:var(--sh);position:relative;overflow:hidden;text-align:left;font:inherit;color:inherit;cursor:pointer;width:auto}
+.cotel .bx::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--p700)}
+.cotel .bx.tel::before{background:var(--azulB)}
+.cotel .bx.cur{border-color:var(--p300);box-shadow:0 0 0 1px var(--p300)}
+.cotel .bx:focus-visible{outline:2px solid var(--p500);outline-offset:2px}
+.cotel .tt{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--ink2);font-weight:650;letter-spacing:.3px}
+.cotel .tt b{font-size:13px;color:var(--ink);letter-spacing:.4px}
+.cotel .v{font-size:30px;font-weight:750;font-variant-numeric:tabular-nums;margin:6px 0 2px;line-height:1.05}
+.cotel .d{font-size:12px;font-variant-numeric:tabular-nums}
+.cotel .m{margin-top:8px;padding-top:8px;border-top:1px solid var(--line);font-size:12px;color:var(--ink2);display:flex;justify-content:space-between}
+.cotel .m b{color:var(--ink);font-variant-numeric:tabular-nums}
+.cotel .m2{border:0;margin-top:2px;padding-top:0}
+.cons{margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--p50);border:1px solid var(--p200);border-radius:12px;padding:9px 12px;font-size:13px;color:var(--p700)}
+.cons b{font-variant-numeric:tabular-nums}
+@media (prefers-color-scheme: dark){.cons{background:#2a1c3d;border-color:#4a3466;color:#d3b5f0}}
+.dica2{font-size:11.5px;color:var(--ink3);margin-top:8px;text-align:center}
 </style>
 </head>
 <body>

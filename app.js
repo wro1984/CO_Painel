@@ -1,7 +1,7 @@
 /* NS Painel — app (v3.2: dados criptografados publicados pelo MAPI, com acesso aprovado) */
 (function () {
   'use strict';
-  const APP_VERSION = '3.12.0';
+  const APP_VERSION = '3.13.0';
   const P = window.NSData;
   const K = window.NSCripto;
   // Problemas sistêmicos (sistemas.js): só com a mesma versão do app (evita misturar arquivos de versões diferentes)
@@ -80,6 +80,9 @@
   // Segmentos (B2C, COE…): cada um com o seu tempo de corte e a sua base do NS, lidos do TXT.
   // Arquivo antigo (sem SEGMENTO) = B2C, 5 min, NS ÷ atendidas.
   const segDe = r => r.segmento || 'B2C';
+  // nome na tela: B2C é o CO; B2C_TEL é a parceira (filas VQ_COE_TEL_*) e B2C_MANOBRA a Manobra offline
+  const NOME_SEG = { B2C_TEL: 'TEL', B2C_MANOBRA: 'Manobra offline' };
+  const nomeSeg = sg => NOME_SEG[sg] || sg;
   const corteDe = r => r.corte || 5;
   // NS exato para exibir e comparar (evita arredondar duas vezes: 1.802 ÷ 2.414 = 74,648% → 74,6%;
   // pelo NS de 4 casas 0,7465 sairia 74,7%). B2C: no corte ÷ atendidas · COE: no corte ÷ recebidas.
@@ -158,7 +161,7 @@
         return;
       }
       view = 'painel'; main.classList.add('modo-painel');
-      $('#bSeg').hidden = false; $('#segNome').textContent = segAtual(); fecharMenuSeg();
+      $('#bSeg').hidden = false; $('#segNome').textContent = nomeSeg(segAtual()); fecharMenuSeg();
       renderPainel(); return;
     }
     $('#nav').hidden = !cred;
@@ -166,7 +169,7 @@
     main.classList.toggle('modo-painel', view === 'painel');
     $('#bShare').hidden = !(view === 'painel' && snaps.length);
     $('#bSeg').hidden = !(view === 'painel' && snaps.length);
-    $('#segNome').textContent = segAtual();
+    $('#segNome').textContent = nomeSeg(segAtual());
     fecharMenuSeg();
     if (view === 'painel') renderPainel();
     else if (view === 'dados') preview ? renderPreview() : renderDados();
@@ -609,7 +612,7 @@
     if (sg === segAtual()) return;
     segmento = sg; sel = null;
     if (!MODO_MAPI) try { localStorage.setItem('ns-segmento', sg); } catch (e) {}
-    $('#segNome').textContent = segAtual();
+    $('#segNome').textContent = nomeSeg(segAtual());
     const y = window.scrollY;
     renderPainel();
     window.scrollTo(0, y);
@@ -627,7 +630,7 @@
     const m = document.createElement('div');
     m.className = 'segmenu'; m.setAttribute('role', 'menu');
     m.style.top = Math.round($('header').getBoundingClientRect().bottom + 6) + 'px';
-    m.innerHTML = segmentosDisp().map(sg => `<button role="menuitemradio" aria-checked="${sg === atual}" class="${sg === atual ? 'on' : ''}" data-seg="${esc(sg)}"><span>${esc(sg)}<small>NS ${corte(sg)} min</small></span><span class="ck" aria-hidden="true">✓</span></button>`).join('');
+    m.innerHTML = segmentosDisp().map(sg => `<button role="menuitemradio" aria-checked="${sg === atual}" class="${sg === atual ? 'on' : ''}" data-seg="${esc(sg)}"><span>${esc(nomeSeg(sg))}<small>NS ${corte(sg)} min${sg === 'B2C' && segmentosDisp().includes('B2C_TEL') ? ' · CO' : sg === 'B2C_TEL' ? ' · parceira' : ''}</small></span><span class="ck" aria-hidden="true">✓</span></button>`).join('');
     document.body.appendChild(m);
     $('#bSeg').setAttribute('aria-expanded', 'true');
     m.querySelectorAll('button').forEach(b => b.onclick = () => setSegmento(b.dataset.seg));
@@ -805,12 +808,47 @@
     dicaArrastar();
     ligarBases();
     main.querySelectorAll('.seg button').forEach(b => b.onclick = () => { if (b.dataset.m !== modo) setModo(b.dataset.m); });
+    main.querySelectorAll('.cotel .bx[data-seg]').forEach(b => b.onclick = () => setSegmento(b.dataset.seg));
     if ($('#bLimpar')) $('#bLimpar').onclick = () => toggleSel(sel);
     // filtro por dia da semana: tocar liga; tocar no mesmo de novo ou no ✕ desliga
     main.querySelectorAll('.wdf button[data-wd]').forEach(b => b.onclick = () => { const w = +b.dataset.wd; setFiltroDia(filtroDia === w ? null : w); });
     if ($('#bWdx')) $('#bWdx').onclick = () => setFiltroDia(null);
     bindTaps(items);
     if (SIS) SIS.ligar(main, { dados: sisDados, items, rerender: redesenharPainel, toggleSel });
+  }
+
+  // CO × TEL (só no B2C e na TEL): lado a lado, com o consolidado embaixo. O CO é o B2C (filas do CO) e a TEL é o segmento B2C_TEL;
+  // cada card traz o NS do período, a variação contra o período anterior e as atendidas. O consolidado soma os dois (no corte ÷ atendidas).
+  function cardCoTel(cur, prev) {
+    const sg = segAtual(); const atual = snaps[0];
+    if (!atual || !cur || (sg !== 'B2C' && sg !== 'B2C_TEL')) return '';
+    const acha = (seg, ordem) => ordem ? atual.rows.find(r => segDe(r) === seg && r.ordem === ordem && !r.semDados && r.total > 0) : null;
+    const co = acha('B2C', cur.ordem), tel = acha('B2C_TEL', cur.ordem);
+    if (!co || !tel) return '';                        // período sem a TEL (antes de 16/11/2026): sem o quadro
+    const coP = prev && acha('B2C', prev.ordem), telP = prev && acha('B2C_TEL', prev.ordem);
+    const ns = r => r && r.total > 0 ? r.ate / r.total : null;
+    const consol = (a, b) => { const t = (a ? a.total : 0) + (b ? b.total : 0); return t > 0 ? { total: t, ns: ((a ? a.ate : 0) + (b ? b.ate : 0)) / t } : null; };
+    const vs = prev ? ` vs ${esc(nomePrev(modo, prev))}` : '';
+    const dNs = (x, p) => x != null && p != null ? pp(difPP(x, p)) + vs : '<span class="muted">sem período anterior</span>';
+    const dAt = (x, p) => p && p.total > 0 ? tdAt(x.total, p.total) : '';
+    const tdAt = (x, p) => { const a = r1((x / p - 1) * 100); return `<span class="dlt neu">${a === 0 ? '' : a > 0 ? '▲' : '▼'}${Math.abs(a).toFixed(1).replace('.', ',')}%</span>`; };
+    const card = (seg, rot, r, p) => {
+      const n = ns(r), st = situacao(n, metaDe(r));
+      return `<button type="button" class="bx ${seg === 'B2C_TEL' ? 'tel' : 'co'}${seg === sg ? ' cur' : ''}" data-seg="${seg}" aria-label="${rot}: abrir o detalhe">
+        <div class="tt"><b>${rot}</b><span>NS ${corteAtual()} min</span></div>
+        <div class="v">${fmtPct(n)}</div>
+        <div class="d">${dNs(n, ns(p))}</div>
+        ${st ? `<div style="margin-top:6px"><span class="pill ${st}">${stNome(st)}</span></div>` : ''}
+        <div class="m"><span>Atendidas</span><b>${fmtInt(r.total)}</b></div>
+        <div class="m m2"><span>${prev ? `vs ${esc(nomePrev(modo, prev))}` : ''}</span>${prev ? (p ? dAt(r, p) : '') : ''}</div>
+      </button>`;
+    };
+    const c = consol(co, tel), cp = consol(coP, telP);
+    const dC = c && cp ? pp(difPP(c.ns, cp.ns)) : '';
+    return `<div class="card cotelc"><h2>CO × TEL · ${esc(P.rotulo(cur, modo !== 'DIA'))}</h2>
+      <div class="cotel">${card('B2C', 'CO', co, coP)}${card('B2C_TEL', 'TEL', tel, telP)}</div>
+      <div class="cons"><span style="white-space:nowrap">CO + TEL</span><span><b>${fmtPct(c.ns)}</b> consolidado ${dC ? '· ' + dC : ''}</span></div>
+      <div class="dica2">Meta ${p1(metaDe(co))}% · toque num card para abrir o detalhe do CO ou da TEL</div></div>`;
   }
 
   function painelTipo(t, items, serie, all) {
@@ -846,6 +884,7 @@
     const dica = 'Toque numa coluna para selecionar · toque de novo para limpar.';
     const cap = selRow ? esc(detalhe(selRow)) : fd != null ? `Só ${WD_PLURAL[fd]} · ${items.length} mais recentes. ${dica}` : dica;
     return `
+      ${cardCoTel(cur, prev)}
       <div class="kpis">${k}</div>
       ${filtro}
       ${cardFrentes(t, items, cur)}
@@ -1341,7 +1380,7 @@
     bg.innerHTML = `<div class="sheet"><h3>Dados até ${fmtData(s.dataRef)}</h3>
       <div class="small muted">${esc(s.arquivo)} · ${s.origem} · recebido ${fmtDT(s.id)}${s.mudancasAceitas && s.mudancasAceitas.length ? ` · ${s.mudancasAceitas.length} alteração(ões) em período fechado confirmada(s)` : ''}</div>
       <table class="conf" style="cursor:default;margin-top:8px"><thead><tr><th>PERÍODO</th><th>DIAS</th><th>RECEBIDAS</th><th>NS</th></tr></thead><tbody>
-      ${s.rows.filter(r => !r.semDados).map(r => `<tr style="cursor:default"><td>${new Set(s.rows.map(segDe)).size > 1 ? esc(segDe(r)) + ' · ' : ''}${esc(P.rotulo(r, r.tipo === 'SEMANA'))}</td><td>${r.completo ? r.dias : r.dias + '/' + r.diasPeriodo}</td><td>${fmtInt(r.volume)}</td><td>${fmtPct(nsDe(r))}</td></tr>`).join('')}
+      ${s.rows.filter(r => !r.semDados).map(r => `<tr style="cursor:default"><td>${new Set(s.rows.map(segDe)).size > 1 ? esc(nomeSeg(segDe(r))) + ' · ' : ''}${esc(P.rotulo(r, r.tipo === 'SEMANA'))}</td><td>${r.completo ? r.dias : r.dias + '/' + r.diasPeriodo}</td><td>${fmtInt(r.volume)}</td><td>${fmtPct(nsDe(r))}</td></tr>`).join('')}
       </tbody></table>
       <div class="row" style="margin-top:12px"><button class="btn sec" id="cClose">Fechar</button><button class="btn danger" id="cDel">Excluir</button></div></div>`;
     document.body.appendChild(bg);
