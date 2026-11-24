@@ -88,8 +88,8 @@ IPTBM (Oracle) ──► MAPI (servidor interno) ──► dados.json CRIPTOGRAF
 
 ## Antes de cada push
 
-1. **Atualize a versão** em quatro lugares, com o mesmo número: `APP_VERSION` em `app.js`, `VERSION` em
-   `sw.js`, `VERSAO` em `sistemas.js` e `VERSAO` em `frentes.js` (com versões diferentes o card de sistemas e o da Manobra não ligam; o teste de `frentes.js` confere). Sem isso o celular continua com a versão antiga em cache.
+1. **Atualize a versão** em cinco lugares, com o mesmo número: `APP_VERSION` em `app.js`, `VERSION` em
+   `sw.js`, `VERSAO` em `sistemas.js`, `VERSAO` em `frentes.js` e `VERSAO` em `consolidado.js` (com versões diferentes o card de sistemas, o da Manobra e a aba Consolidado não ligam; os testes de `frentes.js` e `consolidado.js` conferem). Sem isso o celular continua com a versão antiga em cache.
 2. Arquivo novo que o app usa? Inclua em `CORE` no `sw.js` (senão não funciona offline).
 3. Teste localmente (abaixo), no tamanho de celular (~390 px), em claro e escuro.
 4. `git pull` antes do push: o MAPI faz commits frequentes no `dados.json`. Use merge, não force-push.
@@ -118,6 +118,7 @@ Sem servidor (abrindo o `index.html` direto do disco) o app não busca dados nem
 | `parser.js` | leitura e conferência do TXT (também roda no Node) |
 | `sistemas.js` | card de problemas sistêmicos (matriz sistemas × períodos, lista e detalhe dos chamados) |
 | `frentes.js` | Manobra: quem atendeu (humano, robô e total): leitura do campo `manobra`, soma por período e conferência com o TXT (também roda no Node) |
+| `consolidado.js` | aba Consolidado: soma C.O. (B2C) + TEL (B2C_TEL) só na memória (também roda no Node; testes: `node --test ferramentas/consolidado.test.js`) |
 | `cripto.js` | login, chave guardada no aparelho (CryptoKey não extraível) e abertura do `dados.json` |
 | `sw.js` | cache para uso offline; `dados.json` sempre da rede quando houver |
 | `manifest.webmanifest`, `icons/` | instalação no celular |
@@ -161,3 +162,21 @@ O MAPI publica a TEL/parceira como segmento próprio (`B2C_TEL`, a partir de 16/
 mostra **dois cards lado a lado (CO e TEL)** com o NS do período, a variação contra o período anterior e as atendidas, e a linha do **consolidado CO + TEL**
 (no corte ÷ atendidas, somados). Tocar num card troca o segmento. O menu ganha o item **TEL** (`nomeSeg()`: `B2C_TEL` → "TEL", `B2C_MANOBRA` → "Manobra offline").
 O quadro só aparece quando há a TEL no período (antes de 16/11 não há). Estilo `.cotel`/`.cons` no `index.html`.
+
+## Abas C.O., TEL e Consolidado (desde a v3.14.0)
+
+O menu de segmentos do topo tem **Consolidado · C.O. · TEL** (depois, se vierem no arquivo, Manobra offline e COE). **C.O. é o B2C com outro nome**: o
+código, o `ns-segmento` guardado no aparelho, as bases (`B2C`) e o MAPI continuam com `B2C`; só o texto muda (`nomeSeg()`), e só quando existe o
+Consolidado (sem a TEL o menu continua dizendo B2C). **Consolidado é só do app**: `consolidado.js` monta o segmento virtual `CONSOLIDADO`
+**na memória** (`rowsAtual()` em `app.js`) a partir de B2C + B2C_TEL; o MAPI **não** publica esse segmento e o TXT, o `dados.json` e o IndexedDB não mudam.
+
+Regra (a mesma do consolidado do `cardCoTel`): NS = (no corte do C.O. + no corte da TEL) ÷ (atendidas do C.O. + atendidas da TEL).
+- **Dia**: só existe nos dias em que há as duas linhas (antes de 16/11/2026 não há TEL: não existe consolidado, em vez de mostrar só o C.O.).
+- **Semana e mês**: soma dos **dias consolidados** do período. Se a TEL só cobre parte (mês em que ela começou), o período fica **incompleto**
+  (`8/30`, asterisco, hachurado), como um mês aberto; passa a completo sozinho.
+- **Meta**: a do C.O. Corte ou base do NS diferentes entre C.O. e TEL, ou só um dos dois no arquivo: `consolidar()` devolve `[]` e a aba some.
+- Na aba Consolidado os cards **C.O. × TEL** mostram a parte de cada um **nos mesmos dias** do consolidado (`co`/`tel` na linha), e a linha
+  "CO + TEL consolidado" nas abas C.O./TEL vem da linha consolidada (toque nela abre a aba Consolidado).
+- Abre no **Consolidado** quem nunca escolheu um segmento; quem já escolheu continua no que escolheu. As bases e o aviso "base desatualizada" do Consolidado usam as do B2C.
+- Histórico, importação e conferência de períodos fechados só enxergam o que veio no TXT (nunca o consolidado).
+- Dados de teste com TEL: `python ferramentas/dados_teste.py --ate 2026-11-23 --tel-desde 2026-11-16 > teste.txt`.
