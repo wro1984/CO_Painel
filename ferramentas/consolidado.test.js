@@ -9,9 +9,10 @@ const dia = (seg, d, volume, total, ate, extra = {}) => Object.assign({ segmento
 const mes = (seg, dias, volume, total, ate) => ({ segmento: seg, tipo: 'MES', ordem: '120261101', periodo: 'NOV*', inicio: '2026-11-01', fim: '2026-11-30', dias, diasPeriodo: 30, completo: false, volume, total, ate, corte: 5, base: 'ATENDIDAS', meta: 0.9, semDados: false });
 const sem = (seg, ini, volume, total, ate, dias = 7) => ({ segmento: seg, tipo: 'SEMANA', ordem: '220261' + ini, periodo: 'x', inicio: `2026-11-${ini.slice(2)}`, fim: `2026-11-${String(+ini.slice(2) + 6).padStart(2, '0')}`, dias, diasPeriodo: 7, completo: dias === 7, volume, total, ate, corte: 5, base: 'ATENDIDAS', meta: 0.9, semDados: false });
 
-// dias 14 e 15: só C.O. (a TEL começa no 16); 16 a 18: os dois
+// dias 14 e 15: só C.O. (a TEL tem linha, mas sem chamadas: começa no 16); 16 a 18: os dois
 const rows = [
   dia('B2C', 14, 100, 90, 80), dia('B2C', 15, 100, 90, 70), dia('B2C', 16, 200, 180, 90), dia('B2C', 17, 200, 180, 100), dia('B2C', 18, 0, 0, 0),
+  dia('B2C_TEL', 14, 0, 0, 0), dia('B2C_TEL', 15, 0, 0, 0),             // a consulta traz a TEL com volume 0 (SEM DADOS) antes de começar
   dia('B2C_TEL', 16, 100, 100, 50), dia('B2C_TEL', 17, 100, 100, 60), dia('B2C_TEL', 18, 10, 10, 5),
   mes('B2C', 5, 600, 540, 340), mes('B2C_TEL', 3, 210, 210, 115),
   sem('B2C', '1116', 400, 360, 190, 3), sem('B2C_TEL', '1116', 210, 210, 115, 3),
@@ -82,4 +83,13 @@ test('mesma versão do app, do service worker e dos outros módulos; arquivo no 
   assert.deepStrictEqual([C.VERSAO, ler('sw.js').match(/VERSION = '([^']+)'/)[1], ler('sistemas.js').match(/VERSAO = '([^']+)'/)[1], ler('frentes.js').match(/VERSAO = '([^']+)'/)[1]], [app, app, app, app]);
   assert.ok(ler('sw.js').includes("'consolidado.js'"));
   assert.ok(ler('index.html').includes('<script src="consolidado.js"></script>'));
+});
+
+test('TEL com linhas zeradas antes de começar não vira "consolidado só do C.O."; dia zerado DEPOIS do início conta', () => {
+  const r = C.consolidar(rows);
+  assert.ok(!r.some(x => x.tipo === 'DIA' && x.inicio < '2026-11-16'));
+  const rs = rows.map(x => x.segmento === 'B2C_TEL' && x.inicio === '2026-11-17' && x.tipo === 'DIA' ? { ...x, volume: 0, total: 0, ate: 0, semDados: true } : x);
+  const d17 = C.consolidar(rs).find(x => x.tipo === 'DIA' && x.inicio === '2026-11-17');
+  assert.strictEqual(d17.total, 180);                                            // só o C.O., mas o dia entra
+  assert.deepStrictEqual(C.consolidar(rows.map(x => x.segmento === 'B2C_TEL' ? { ...x, volume: 0, total: 0, ate: 0 } : x)), []);   // TEL sem nenhuma chamada
 });

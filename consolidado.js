@@ -3,14 +3,14 @@
  * B2C_TEL (a TEL/parceira) do TXT do NS. Nada é gravado e nenhum número do TXT muda: o MAPI continua publicando só B2C e B2C_TEL.
  *
  * Regra (a mesma do cardCoTel desde a v3.13.0): NS = (no corte do C.O. + no corte da TEL) ÷ (atendidas do C.O. + atendidas da TEL).
- * Dia: só entra no dia em que existem as duas linhas (antes de 16/11/2026 não há TEL: o consolidado não existe, em vez de mostrar só o C.O.).
+ * Dia: só entra a partir do primeiro dia da TEL com chamadas (16/11/2026); as linhas "SEM DADOS" (volume 0) da TEL antes disso não contam, senão o consolidado mostraria só o C.O.
  * Semana e mês: soma dos dias consolidados do período. Se a TEL só cobre parte do período (mês em que a TEL começou), o período
  * sai como INCOMPLETO (dias/diasPeriodo, asterisco), igual a um mês em aberto.
  * Qualquer dúvida (corte ou base do NS diferentes entre os dois, só um dos segmentos) = devolve [] e a aba Consolidado não aparece.
  */
 (function (root) {
   'use strict';
-  const VERSAO = '3.14.0';
+  const VERSAO = '3.14.1';
   const SEGMENTO = 'CONSOLIDADO', CO = 'B2C', TEL = 'B2C_TEL';
   const segDe = r => r.segmento || CO;
   const ns4 = (a, b) => b > 0 ? Math.round(a / b * 10000) / 10000 : null;
@@ -29,10 +29,16 @@
     const base = unico(co, 'base'), baseT = unico(tel, 'base');
     if (base !== 'ATENDIDAS' || baseT !== 'ATENDIDAS') return [];
 
-    const telPor = new Map(tel.filter(r => r.tipo === 'DIA').map(r => [r.ordem, r]));
-    const dias = [];     // dias com as duas linhas
+    // A consulta do MAPI traz uma linha por dia para CADA segmento, com volume 0 ("SEM DADOS") nos dias em que o segmento não existia:
+    // a TEL tem linha desde o começo da janela, mas só tem dado a partir de 16/11/2026. Por isso o consolidado começa no PRIMEIRO dia
+    // da TEL com chamadas; dali em diante, dia da TEL sem chamadas conta como zero. Antes disso não há consolidado (não é "só o C.O.").
+    const telDia = tel.filter(r => r.tipo === 'DIA');
+    const inicioTel = telDia.filter(r => r.volume > 0).map(r => r.inicio).sort()[0];
+    if (!inicioTel) return [];
+    const telPor = new Map(telDia.map(r => [r.ordem, r]));
+    const dias = [];     // dias com as duas linhas, a partir do início da TEL
     for (const c of co) {
-      if (c.tipo !== 'DIA') continue;
+      if (c.tipo !== 'DIA' || c.inicio < inicioTel) continue;
       const t = telPor.get(c.ordem);
       if (!t) continue;
       dias.push({ c, t, inicio: c.inicio, volume: c.volume + t.volume, total: c.total + t.total, ate: c.ate + t.ate });
