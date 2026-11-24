@@ -82,8 +82,8 @@
   // Arquivo antigo (sem SEGMENTO) = B2C, 5 min, NS ÷ atendidas.
   const segDe = r => r.segmento || 'B2C';
   // nome na tela: B2C é o CO; B2C_TEL é a parceira (filas VQ_COE_TEL_*) e B2C_MANOBRA a Manobra offline
-  // com a aba Consolidado (C.O. + TEL) o B2C passa a se chamar C.O.: a aba Consolidado é só do app (consolidado.js), o MAPI publica B2C e B2C_TEL
-  const NOME_SEG = { B2C_TEL: 'TEL', B2C_MANOBRA: 'Manobra offline', CONSOLIDADO: 'Consolidado' };
+  // com a aba Consolidado (C.O. + TEL) ela é exibida como "B2C" (o B2C inteiro) e o B2C do arquivo (só o C.O.) passa a se chamar C.O.: o Consolidado é só do app (consolidado.js), o MAPI publica B2C e B2C_TEL
+  const NOME_SEG = { B2C_TEL: 'TEL', B2C_MANOBRA: 'Manobra offline', CONSOLIDADO: 'B2C' };
   const nomeSeg = sg => sg === 'B2C' && temConsolidado() ? 'C.O.' : (NOME_SEG[sg] || sg);
   const corteDe = r => r.corte || 5;
   // NS exato para exibir e comparar (evita arredondar duas vezes: 1.802 ÷ 2.414 = 74,648% → 74,6%;
@@ -864,8 +864,8 @@
     const dC = c && cp ? pp(difPP(c.ns, cp.ns)) : '';
     return `<div class="card cotelc"><h2>CO × TEL · ${esc(P.rotulo(cur, modo !== 'DIA'))}</h2>
       <div class="cotel">${card('B2C', 'CO', co, coP)}${card('B2C_TEL', 'TEL', tel, telP)}</div>
-      ${sg === 'CONSOLIDADO' ? '' : `<div class="cons" role="button" tabindex="0" data-seg="CONSOLIDADO" aria-label="Abrir o consolidado C.O. + TEL"><span style="white-space:nowrap">CO + TEL</span><span><b>${fmtPct(c.ns)}</b> consolidado ${dC ? '· ' + dC : ''} ›</span></div>`}
-      <div class="dica2">Meta ${p1(metaDe(co))}% · toque num card para abrir o detalhe do CO ou da TEL${sg === 'CONSOLIDADO' ? '' : ', ou no consolidado'}</div></div>`;
+      ${sg === 'CONSOLIDADO' ? '' : `<div class="cons" role="button" tabindex="0" data-seg="CONSOLIDADO" aria-label="Abrir o B2C (C.O. + TEL)"><span style="white-space:nowrap">B2C</span><span><b>${fmtPct(c.ns)}</b> C.O. + TEL ${dC ? '· ' + dC : ''} ›</span></div>`}
+      <div class="dica2">Meta ${p1(metaDe(co))}% · toque num card para abrir o detalhe do CO ou da TEL${sg === 'CONSOLIDADO' ? '' : ', ou no B2C'}</div></div>`;
   }
 
   function painelTipo(t, items, serie, all) {
@@ -1260,7 +1260,7 @@
   <defs><linearGradient id="hd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${PAL.p800}"/><stop offset=".6" stop-color="${PAL.p700}"/><stop offset="1" stop-color="${PAL.p500}"/></linearGradient></defs>
   <rect width="${W}" height="${H}" fill="${PAL.bg}"/>
   <rect width="${W}" height="200" fill="url(#hd)"/>
-  ${T(60, 92, 52, `NS ${corteAtual()} min · ${segAtual() === 'CONSOLIDADO' ? 'C.O. + TEL' : nomeSeg(segAtual()) + ' Suporte'}`, { w: 800, f: '#FFFFFF' })}
+  ${T(60, 92, 52, `NS ${corteAtual()} min · ${nomeSeg(segAtual())} Suporte`, { w: 800, f: '#FFFFFF' })}
   ${T(60, 146, 29, `Nível de serviço diário · dados até ${fmtData(d.dataRef || c.inicio)}`, { f: '#FFFFFF', op: .88 })}
   <rect x="48" y="236" width="984" height="300" rx="28" fill="${PAL.card}" stroke="${PAL.line}" stroke-width="2"/>
   ${T(92, 300, 30, `Último dia · ${P.rotulo(c)} · ${['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'][d.wd(c)]}`, { f: PAL.ink2 })}

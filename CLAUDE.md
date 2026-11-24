@@ -165,9 +165,10 @@ O quadro só aparece quando há a TEL no período (antes de 16/11 não há). Est
 
 ## Abas C.O., TEL e Consolidado (desde a v3.14.0)
 
-O menu de segmentos do topo tem **Consolidado · C.O. · TEL** (depois, se vierem no arquivo, Manobra offline e COE). **C.O. é o B2C com outro nome**: o
-código, o `ns-segmento` guardado no aparelho, as bases (`B2C`) e o MAPI continuam com `B2C`; só o texto muda (`nomeSeg()`), e só quando existe o
-Consolidado (sem a TEL o menu continua dizendo B2C). **Consolidado é só do app**: `consolidado.js` monta o segmento virtual `CONSOLIDADO`
+O menu de segmentos do topo tem **B2C · C.O. · TEL** (depois, se vierem no arquivo, Manobra offline e COE). **Atenção aos nomes**: a primeira aba, **exibida como "B2C"**,
+é o segmento virtual interno `CONSOLIDADO` (C.O. + TEL); a aba **"C.O."** é o segmento `B2C` do arquivo (só o C.O.). O código, o `ns-segmento` guardado no aparelho, as bases
+(`B2C`) e o MAPI continuam com os ids `B2C`/`B2C_TEL`; só o texto muda (`nomeSeg()`), e só quando existe o Consolidado (sem a TEL o menu continua com um B2C só, que é o do arquivo).
+O texto "Consolidado" não aparece mais para o usuário. **O `CONSOLIDADO` é só do app**: `consolidado.js` monta o segmento virtual `CONSOLIDADO`
 **na memória** (`rowsAtual()` em `app.js`) a partir de B2C + B2C_TEL; o MAPI **não** publica esse segmento e o TXT, o `dados.json` e o IndexedDB não mudam.
 
 Regra (a mesma do consolidado do `cardCoTel`): NS = (no corte do C.O. + no corte da TEL) ÷ (atendidas do C.O. + atendidas da TEL).
