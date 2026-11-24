@@ -172,7 +172,7 @@ O texto "Consolidado" não aparece mais para o usuário. **O `CONSOLIDADO` é s�
 **na memória** (`rowsAtual()` em `app.js`) a partir de B2C + B2C_TEL; o MAPI **não** publica esse segmento e o TXT, o `dados.json` e o IndexedDB não mudam.
 
 Regra (a mesma do consolidado do `cardCoTel`): NS = (no corte do C.O. + no corte da TEL) ÷ (atendidas do C.O. + atendidas da TEL).
-- **Dia**: só existe nos dias em que há as duas linhas (antes de 16/11/2026 não há TEL: não existe consolidado, em vez de mostrar só o C.O.).
+- **Dia**: só existe a partir do **primeiro dia da TEL com chamadas** (16/11/2026). A consulta do MAPI traz uma linha por dia para cada segmento, com volume 0 ("SEM DADOS") nos dias em que a TEL ainda não existia: essas linhas **não** contam (v3.14.1; na v3.14.0 elas faziam o B2C mostrar só o C.O. nos dias anteriores). Depois do início, dia da TEL sem chamadas conta como zero.
 - **Semana e mês**: soma dos **dias consolidados** do período. Se a TEL só cobre parte (mês em que ela começou), o período fica **incompleto**
   (`8/30`, asterisco, hachurado), como um mês aberto; passa a completo sozinho.
 - **Meta**: a do C.O. Corte ou base do NS diferentes entre C.O. e TEL, ou só um dos dois no arquivo: `consolidar()` devolve `[]` e a aba some.

@@ -75,9 +75,13 @@ def _segmento(ate: date, rnd: random.Random, desde: date = None, escala: float =
                                  "COMPLETA - 7 DIAS" if completo else f"INCOMPLETA - {q} DIA(S)", f"2{ini:%Y%m%d}"))
     for i in range(13, -1, -1):
         d = ate - timedelta(days=i)
+        rot = f"{d:%d}/{MESES[d.month - 1].upper()}"
         if d in dias:
             v, t, a = dias[d]
-            linhas.append(_linha(f"{d:%d}/{MESES[d.month - 1].upper()}", 1, v, t, a, "DIA", "DIA", f"3{d:%Y%m%d}"))
+            linhas.append(_linha(rot, 1, v, t, a, "DIA", "DIA", f"3{d:%Y%m%d}"))
+        elif desde is not None:
+            # como a consulta real: o segmento tem uma linha por dia, com volume 0 ("SEM DADOS") antes de existir
+            linhas.append(_linha(rot, 1, 0, 0, 0, "DIA", "SEM DADOS", f"3{d:%Y%m%d}"))
     return linhas
 
 
