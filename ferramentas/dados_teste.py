@@ -6,6 +6,7 @@ público. Cada linha leva a coluna extra ORIGEM = TESTE, que o app mostra no
 detalhe do período.
 
     python ferramentas/dados_teste.py --ate 2026-10-08 > teste.txt
+    python ferramentas/dados_teste.py --ate 2026-11-23 --tel-desde 2026-11-16 > teste.txt   # com C.O. (B2C) e TEL (B2C_TEL)
 """
 
 import argparse
@@ -35,18 +36,17 @@ def _linha(periodo, dias, v, t, a, tipo, status_periodo, ordem):
             _status(ns), tipo, status_periodo, ordem, "TESTE"]
 
 
-def gerar(ate: date, semente: int = 7) -> str:
-    rnd = random.Random(semente)
-    cab = ["PERIODO", "QUANTIDADE_DIAS", "VOLUME", "TOTAL_ATENDIDAS", "ATE_5_MIN", "NS_5_MIN", "META_NS",
-           "STATUS_NS", "TIPO_PERIODO", "STATUS_PERIODO", "ORDEM", "ORIGEM"]
-    # todos os dias desde o início do 4º mês anterior: meses e semanas saem da soma deles
+def _segmento(ate: date, rnd: random.Random, desde: date = None, escala: float = 1.0):
+    """Linhas (sem cabeçalho) de um segmento: meses, semanas e os 14 últimos dias. `desde` = primeiro dia com dados (a TEL começa depois)."""
     inicio = date(ate.year, ate.month, 1)
     for _ in range(4):
         inicio = (inicio - timedelta(days=1)).replace(day=1)
     dias = {}
     d = inicio
     while d <= ate:
-        dias[d] = _dia(d, rnd)
+        v, t, a = _dia(d, rnd)
+        if desde is None or d >= desde:
+            dias[d] = (int(v * escala), int(t * escala), int(a * escala))
         d += timedelta(days=1)
 
     def soma(ini, n):
@@ -59,8 +59,9 @@ def gerar(ate: date, semente: int = 7) -> str:
         n_mes = calendar.monthrange(m.year, m.month)[1]
         q, v, t, a = soma(m, n_mes)
         completo = q == n_mes
-        linhas.append(_linha(MESES[m.month - 1] + ("" if completo else "*"), q, v, t, a, "MES",
-                             "COMPLETO" if completo else "INCOMPLETO", f"1{m:%Y%m%d}"))
+        if q:
+            linhas.append(_linha(MESES[m.month - 1] + ("" if completo else "*"), q, v, t, a, "MES",
+                                 "COMPLETO" if completo else "INCOMPLETO", f"1{m:%Y%m%d}"))
         m = (m.replace(day=28) + timedelta(days=4)).replace(day=1)
     seg = ate - timedelta(days=ate.weekday())          # semanas de segunda a domingo
     for k in range(6, -1, -1):
@@ -69,18 +70,34 @@ def gerar(ate: date, semente: int = 7) -> str:
         fim = ini + timedelta(days=6)
         completo = q == 7
         rot = f"SEM {ini:%d/%m} A {fim:%d/%m}" + ("" if completo else "*")
-        linhas.append(_linha(rot, q, v, t, a, "SEMANA",
-                             "COMPLETA - 7 DIAS" if completo else f"INCOMPLETA - {q} DIA(S)", f"2{ini:%Y%m%d}"))
+        if q:
+            linhas.append(_linha(rot, q, v, t, a, "SEMANA",
+                                 "COMPLETA - 7 DIAS" if completo else f"INCOMPLETA - {q} DIA(S)", f"2{ini:%Y%m%d}"))
     for i in range(13, -1, -1):
         d = ate - timedelta(days=i)
-        v, t, a = dias[d]
-        linhas.append(_linha(f"{d:%d}/{MESES[d.month - 1].upper()}", 1, v, t, a, "DIA", "DIA", f"3{d:%Y%m%d}"))
-    return "\n".join("\t".join(l) for l in [cab] + linhas) + "\n"
+        if d in dias:
+            v, t, a = dias[d]
+            linhas.append(_linha(f"{d:%d}/{MESES[d.month - 1].upper()}", 1, v, t, a, "DIA", "DIA", f"3{d:%Y%m%d}"))
+    return linhas
+
+
+def gerar(ate: date, semente: int = 7, tel_desde: date = None) -> str:
+    """Sem `tel_desde`: um segmento só (formato antigo). Com `tel_desde`: B2C (o C.O.) e B2C_TEL, que só tem dados a partir dessa data."""
+    rnd = random.Random(semente)
+    cab = ["PERIODO", "QUANTIDADE_DIAS", "VOLUME", "TOTAL_ATENDIDAS", "ATE_5_MIN", "NS_5_MIN", "META_NS",
+           "STATUS_NS", "TIPO_PERIODO", "STATUS_PERIODO", "ORDEM", "ORIGEM"]
+    if tel_desde is None:
+        return "\n".join("\t".join(l) for l in [cab] + _segmento(ate, rnd)) + "\n"
+    cab += ["SEGMENTO", "TEMPO_CORTE_MINUTOS"]
+    co = [l + ["B2C", "5"] for l in _segmento(ate, rnd)]
+    tel = [l + ["B2C_TEL", "5"] for l in _segmento(ate, rnd, tel_desde, 0.7)]
+    return "\n".join("\t".join(l) for l in [cab] + co + tel) + "\n"
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--ate", default=(date.today() - timedelta(days=1)).isoformat(), help="último dia (AAAA-MM-DD)")
     ap.add_argument("--semente", type=int, default=7)
+    ap.add_argument("--tel-desde", help="gera também o segmento B2C_TEL a partir desta data (AAAA-MM-DD)")
     args = ap.parse_args()
-    print(gerar(date.fromisoformat(args.ate), args.semente), end="")
+    print(gerar(date.fromisoformat(args.ate), args.semente, date.fromisoformat(args.tel_desde) if args.tel_desde else None), end="")

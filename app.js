@@ -1,12 +1,13 @@
 /* NS Painel — app (v3.2: dados criptografados publicados pelo MAPI, com acesso aprovado) */
 (function () {
   'use strict';
-  const APP_VERSION = '3.13.0';
+  const APP_VERSION = '3.14.0';
   const P = window.NSData;
   const K = window.NSCripto;
   // Problemas sistêmicos (sistemas.js): só com a mesma versão do app (evita misturar arquivos de versões diferentes)
   const SIS = window.NSSistemas && window.NSSistemas.versao === APP_VERSION ? window.NSSistemas : null;
   const FRT = window.NSFrentes && window.NSFrentes.VERSAO === APP_VERSION ? window.NSFrentes : null;   // Manobra: humano × robô
+  const CONS = window.NSConsolidado && window.NSConsolidado.VERSAO === APP_VERSION ? window.NSConsolidado : null;   // aba Consolidado (C.O. + TEL)
   const $ = s => document.querySelector(s);
   const main = $('#main');
   $('#ver').textContent = 'v' + APP_VERSION;
@@ -81,27 +82,36 @@
   // Arquivo antigo (sem SEGMENTO) = B2C, 5 min, NS ÷ atendidas.
   const segDe = r => r.segmento || 'B2C';
   // nome na tela: B2C é o CO; B2C_TEL é a parceira (filas VQ_COE_TEL_*) e B2C_MANOBRA a Manobra offline
-  const NOME_SEG = { B2C_TEL: 'TEL', B2C_MANOBRA: 'Manobra offline' };
-  const nomeSeg = sg => NOME_SEG[sg] || sg;
+  // com a aba Consolidado (C.O. + TEL) ela é exibida como "B2C" (o B2C inteiro) e o B2C do arquivo (só o C.O.) passa a se chamar C.O.: o Consolidado é só do app (consolidado.js), o MAPI publica B2C e B2C_TEL
+  const NOME_SEG = { B2C_TEL: 'TEL', B2C_MANOBRA: 'Manobra offline', CONSOLIDADO: 'B2C' };
+  const nomeSeg = sg => sg === 'B2C' && temConsolidado() ? 'C.O.' : (NOME_SEG[sg] || sg);
   const corteDe = r => r.corte || 5;
   // NS exato para exibir e comparar (evita arredondar duas vezes: 1.802 ÷ 2.414 = 74,648% → 74,6%;
   // pelo NS de 4 casas 0,7465 sairia 74,7%). B2C: no corte ÷ atendidas · COE: no corte ÷ recebidas.
   const nsDe = r => { const den = r.base === 'RECEBIDAS' ? r.volume : r.total; return den > 0 ? r.ate / den : null; };
-  let segmento = (() => { try { return localStorage.getItem('ns-segmento') || 'B2C'; } catch (e) { return 'B2C'; } })();
-  // segmentos do arquivo atual, B2C primeiro
-  function segmentosDisp() {
+  let segmento = (() => { try { return localStorage.getItem('ns-segmento') || 'CONSOLIDADO'; } catch (e) { return 'CONSOLIDADO'; } })();
+  // linhas do arquivo atual + as do segmento virtual CONSOLIDADO (só na memória, nunca gravadas); refeito quando o arquivo muda
+  let consDe = null, consRows = [];
+  function rowsAtual() {
     const atual = snaps[0]; if (!atual) return [];
-    const l = [...new Set(atual.rows.map(segDe))];
-    return l.sort((a, b) => (b === 'B2C') - (a === 'B2C'));
+    if (consDe !== atual) { consDe = atual; consRows = CONS ? CONS.consolidar(atual.rows) : []; }
+    return consRows.length ? atual.rows.concat(consRows) : atual.rows;
+  }
+  const temConsolidado = () => { rowsAtual(); return consRows.length > 0; };
+  // segmentos do arquivo atual: Consolidado, depois B2C (C.O.), depois os outros
+  const ORDEM_SEG = { CONSOLIDADO: 0, B2C: 1 };
+  function segmentosDisp() {
+    const l = [...new Set(rowsAtual().map(segDe))];
+    return l.sort((a, b) => (ORDEM_SEG[a] ?? 2) - (ORDEM_SEG[b] ?? 2));
   }
   function segAtual() { const l = segmentosDisp(); return l.includes(segmento) ? segmento : (l[0] || 'B2C'); }
-  function corteAtual() { const sg = segAtual(), r = snaps[0] && snaps[0].rows.find(x => segDe(x) === sg); return r ? corteDe(r) : 5; }
+  function corteAtual() { const sg = segAtual(), r = rowsAtual().find(x => segDe(x) === sg); return r ? corteDe(r) : 5; }
   function periodos() {
     const map = new Map();
     const atual = snaps[0];
     if (!atual) return map;
     const sg = segAtual();
-    for (const r of atual.rows) {
+    for (const r of rowsAtual()) {
       if (segDe(r) !== sg || r.semDados || r.volume === 0) continue;   // período sem chamadas não aparece
       const ns = nsDe(r), meta = metaDe(r); map.set(r.ordem, { ...r, ns, meta, status: situacao(ns, meta) });
     }
@@ -389,7 +399,7 @@
     if (mudou) redesenharPainel();
   }
   function basesDoMapi(texto) { basesInfo = texto == null || String(texto).trim() === '' ? null : lerBases(texto); }
-  const basesSeg = () => (basesInfo && basesInfo.segmentos && basesInfo.segmentos[segAtual()]) || null;
+  const basesSeg = () => (basesInfo && basesInfo.segmentos && basesInfo.segmentos[segAtual() === 'CONSOLIDADO' ? 'B2C' : segAtual()]) || null;   // o consolidado usa as bases do B2C
   const basesAtencao = () => { const b = basesSeg(); return !!b && b.estado === 'atencao'; };
   const quandoBase = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)} ${iso.slice(11, 16)}`;
   function haQuanto(iso, ate) {
@@ -626,11 +636,11 @@
   function abrirMenuSeg() {
     if (document.querySelector('.segmenu')) { fecharMenuSeg(); return; }
     const atual = segAtual();
-    const corte = sg => { const r = snaps[0] && snaps[0].rows.find(x => segDe(x) === sg); return r ? corteDe(r) : 5; };
+    const corte = sg => { const r = rowsAtual().find(x => segDe(x) === sg); return r ? corteDe(r) : 5; };
     const m = document.createElement('div');
     m.className = 'segmenu'; m.setAttribute('role', 'menu');
     m.style.top = Math.round($('header').getBoundingClientRect().bottom + 6) + 'px';
-    m.innerHTML = segmentosDisp().map(sg => `<button role="menuitemradio" aria-checked="${sg === atual}" class="${sg === atual ? 'on' : ''}" data-seg="${esc(sg)}"><span>${esc(nomeSeg(sg))}<small>NS ${corte(sg)} min${sg === 'B2C' && segmentosDisp().includes('B2C_TEL') ? ' · CO' : sg === 'B2C_TEL' ? ' · parceira' : ''}</small></span><span class="ck" aria-hidden="true">✓</span></button>`).join('');
+    m.innerHTML = segmentosDisp().map(sg => `<button role="menuitemradio" aria-checked="${sg === atual}" class="${sg === atual ? 'on' : ''}" data-seg="${esc(sg)}"><span>${esc(nomeSeg(sg))}<small>NS ${corte(sg)} min${sg === 'CONSOLIDADO' ? ' · C.O. + TEL' : sg === 'B2C_TEL' ? ' · parceira' : ''}</small></span><span class="ck" aria-hidden="true">✓</span></button>`).join('');
     document.body.appendChild(m);
     $('#bSeg').setAttribute('aria-expanded', 'true');
     m.querySelectorAll('button').forEach(b => b.onclick = () => setSegmento(b.dataset.seg));
@@ -808,7 +818,7 @@
     dicaArrastar();
     ligarBases();
     main.querySelectorAll('.seg button').forEach(b => b.onclick = () => { if (b.dataset.m !== modo) setModo(b.dataset.m); });
-    main.querySelectorAll('.cotel .bx[data-seg]').forEach(b => b.onclick = () => setSegmento(b.dataset.seg));
+    main.querySelectorAll('.cotelc [data-seg]').forEach(b => { b.onclick = () => setSegmento(b.dataset.seg); b.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSegmento(b.dataset.seg); } }; });
     if ($('#bLimpar')) $('#bLimpar').onclick = () => toggleSel(sel);
     // filtro por dia da semana: tocar liga; tocar no mesmo de novo ou no ✕ desliga
     main.querySelectorAll('.wdf button[data-wd]').forEach(b => b.onclick = () => { const w = +b.dataset.wd; setFiltroDia(filtroDia === w ? null : w); });
@@ -821,11 +831,16 @@
   // cada card traz o NS do período, a variação contra o período anterior e as atendidas. O consolidado soma os dois (no corte ÷ atendidas).
   function cardCoTel(cur, prev) {
     const sg = segAtual(); const atual = snaps[0];
-    if (!atual || !cur || (sg !== 'B2C' && sg !== 'B2C_TEL')) return '';
+    if (!atual || !cur || (sg !== 'B2C' && sg !== 'B2C_TEL' && sg !== 'CONSOLIDADO')) return '';
     const acha = (seg, ordem) => ordem ? atual.rows.find(r => segDe(r) === seg && r.ordem === ordem && !r.semDados && r.total > 0) : null;
-    const co = acha('B2C', cur.ordem), tel = acha('B2C_TEL', cur.ordem);
+    // no consolidado, o C.O. e a TEL são a parte de cada um NOS MESMOS DIAS do consolidado (mês em que a TEL começou no meio: 8 dias, não 23)
+    const achaCons = ordem => ordem ? rowsAtual().find(r => r.segmento === 'CONSOLIDADO' && r.ordem === ordem && !r.semDados && r.total > 0) : null;
+    const parteDe = (c, k) => c && { ...c[k], meta: c.meta };
+    const cc = achaCons(cur.ordem), ccP = prev && achaCons(prev.ordem);
+    const dosDias = sg === 'CONSOLIDADO';
+    const co = dosDias ? parteDe(cc, 'co') : acha('B2C', cur.ordem), tel = dosDias ? parteDe(cc, 'tel') : acha('B2C_TEL', cur.ordem);
     if (!co || !tel) return '';                        // período sem a TEL (antes de 16/11/2026): sem o quadro
-    const coP = prev && acha('B2C', prev.ordem), telP = prev && acha('B2C_TEL', prev.ordem);
+    const coP = prev && (dosDias ? parteDe(ccP, 'co') : acha('B2C', prev.ordem)), telP = prev && (dosDias ? parteDe(ccP, 'tel') : acha('B2C_TEL', prev.ordem));
     const ns = r => r && r.total > 0 ? r.ate / r.total : null;
     const consol = (a, b) => { const t = (a ? a.total : 0) + (b ? b.total : 0); return t > 0 ? { total: t, ns: ((a ? a.ate : 0) + (b ? b.ate : 0)) / t } : null; };
     const vs = prev ? ` vs ${esc(nomePrev(modo, prev))}` : '';
@@ -843,12 +858,14 @@
         <div class="m m2"><span>${prev ? `vs ${esc(nomePrev(modo, prev))}` : ''}</span>${prev ? (p ? dAt(r, p) : '') : ''}</div>
       </button>`;
     };
-    const c = consol(co, tel), cp = consol(coP, telP);
+    // o consolidado vem da linha CONSOLIDADO do período (mesmos dias dos dois); sem ela, soma dos dois como antes
+    const deLinha = l => l && l.total > 0 ? { total: l.total, ns: l.ate / l.total } : null;
+    const c = deLinha(cc) || consol(co, tel), cp = deLinha(ccP) || consol(coP, telP);
     const dC = c && cp ? pp(difPP(c.ns, cp.ns)) : '';
     return `<div class="card cotelc"><h2>CO × TEL · ${esc(P.rotulo(cur, modo !== 'DIA'))}</h2>
       <div class="cotel">${card('B2C', 'CO', co, coP)}${card('B2C_TEL', 'TEL', tel, telP)}</div>
-      <div class="cons"><span style="white-space:nowrap">CO + TEL</span><span><b>${fmtPct(c.ns)}</b> consolidado ${dC ? '· ' + dC : ''}</span></div>
-      <div class="dica2">Meta ${p1(metaDe(co))}% · toque num card para abrir o detalhe do CO ou da TEL</div></div>`;
+      ${sg === 'CONSOLIDADO' ? '' : `<div class="cons" role="button" tabindex="0" data-seg="CONSOLIDADO" aria-label="Abrir o B2C (C.O. + TEL)"><span style="white-space:nowrap">B2C</span><span><b>${fmtPct(c.ns)}</b> C.O. + TEL ${dC ? '· ' + dC : ''} ›</span></div>`}
+      <div class="dica2">Meta ${p1(metaDe(co))}% · toque num card para abrir o detalhe do CO ou da TEL${sg === 'CONSOLIDADO' ? '' : ', ou no B2C'}</div></div>`;
   }
 
   function painelTipo(t, items, serie, all) {
@@ -1150,7 +1167,7 @@
   }
   function textoCompartilhar() {
     const c = conteudoMsg();
-    const L = [`📊 *Chamadas recebidas x NS (${corteAtual()} min) · ${segAtual()}*`];
+    const L = [`📊 *Chamadas recebidas x NS (${corteAtual()} min) · ${nomeSeg(segAtual())}*`];
     for (const b of c.blocos) {
       const lw = Math.max(...b.linhas.map(x => x.lab.length)), nw = Math.max(...b.linhas.map(x => x.num.length));
       L.push('', `*${b.titulo}*`, ...b.linhas.map(x => `▫️ ${x.lab.padEnd(lw)} → ${x.num.padStart(nw)} | *${x.ns}*`));
@@ -1167,7 +1184,7 @@
     const thR = 'style="text-align:right;padding:4px 12px 4px 0;border-bottom:1px solid #D5BFE7;color:#642A90"';
     const td = 'style="padding:3px 12px 3px 0"', tdR = 'style="text-align:right;padding:3px 12px 3px 0"';
     let h = '<div style="font-family:Segoe UI,Arial,sans-serif;font-size:14px">';
-    h += `<p>📊 <b>Chamadas recebidas x NS (${corteAtual()} min) · ${esc(segAtual())}</b></p>`;
+    h += `<p>📊 <b>Chamadas recebidas x NS (${corteAtual()} min) · ${esc(nomeSeg(segAtual()))}</b></p>`;
     for (const b of c.blocos) {
       h += `<p><b>${esc(b.titulo)}</b></p><table style="border-collapse:collapse"><thead><tr><th ${th}>${esc(b.col)}</th><th ${thR}>Chamadas recebidas</th><th ${thR}>NS ${corteAtual()} min</th></tr></thead><tbody>`;
       for (const x of b.linhas) h += `<tr><td ${td}>${esc(x.lab)}</td><td ${tdR}>${esc(x.num)}</td><td ${tdR}><b style="color:${COR_TEAMS[x.status] || '#1F1530'}">${esc(x.ns)}</b></td></tr>`;
@@ -1180,7 +1197,7 @@
   // versão em texto simples (para quem colar onde não há formatação)
   function textoSimples() {
     const c = conteudoMsg();
-    const L = [`📊 Chamadas recebidas x NS (${corteAtual()} min) · ${segAtual()}`];
+    const L = [`📊 Chamadas recebidas x NS (${corteAtual()} min) · ${nomeSeg(segAtual())}`];
     for (const b of c.blocos) {
       const lw = Math.max(...b.linhas.map(x => x.lab.length)), nw = Math.max(...b.linhas.map(x => x.num.length));
       L.push('', b.titulo, ...b.linhas.map(x => `▫️ ${x.lab.padEnd(lw)} → ${x.num.padStart(nw)} | ${x.ns}`));
@@ -1243,7 +1260,7 @@
   <defs><linearGradient id="hd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${PAL.p800}"/><stop offset=".6" stop-color="${PAL.p700}"/><stop offset="1" stop-color="${PAL.p500}"/></linearGradient></defs>
   <rect width="${W}" height="${H}" fill="${PAL.bg}"/>
   <rect width="${W}" height="200" fill="url(#hd)"/>
-  ${T(60, 92, 52, `NS ${corteAtual()} min · ${segAtual()} Suporte`, { w: 800, f: '#FFFFFF' })}
+  ${T(60, 92, 52, `NS ${corteAtual()} min · ${nomeSeg(segAtual())} Suporte`, { w: 800, f: '#FFFFFF' })}
   ${T(60, 146, 29, `Nível de serviço diário · dados até ${fmtData(d.dataRef || c.inicio)}`, { f: '#FFFFFF', op: .88 })}
   <rect x="48" y="236" width="984" height="300" rx="28" fill="${PAL.card}" stroke="${PAL.line}" stroke-width="2"/>
   ${T(92, 300, 30, `Último dia · ${P.rotulo(c)} · ${['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'][d.wd(c)]}`, { f: PAL.ink2 })}
