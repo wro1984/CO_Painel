@@ -194,7 +194,7 @@ Só na aba **B2C** (segmento `CONSOLIDADO`), logo abaixo dos 4 cartões e do fil
 
 ## CO por canal: Voz, Vivo + e Chat (desde a v3.16.0)
 
-Dentro do card "Chamadas recebidas por frente" (aba B2C), uma segunda fileira abre o **C.O.** como o PBI: **Voz**, **Vivo +** e **Chat**. No PBI, "VOZ + VIVO +" é o canal `VOZ_GENESYS` (voz pela URA + skills `_MM` do Vivo+) e "CHAT" é o chat Dani.
+Dentro do card "Chamadas recebidas por frente" (aba B2C), uma segunda fileira abre o **B2C (CO + TEL)** por canal: **Voz** (voz do CO + a TEL, que é voz), **Vivo +** (skills `_MM`) e **Chat** (Dani) — v3.16.1; antes (v3.16.0) era só o C.O. Se o campo não traz a TEL (`tvoz`/`tvivo`) ou ela não fecha com o volume da TEL, volta a abertura só do C.O. No PBI, "VOZ + VIVO +" é o canal `VOZ_GENESYS` (voz pela URA + skills `_MM` do Vivo+) e "CHAT" é o chat Dani.
 - Vem do campo opcional **`canais`** do `dados.json` (cifrado com a mesma chave, `K.abrirCanais`; `{v:1, inicio, ate, dias:[{d, voz, vivo, chat}]}`), feito pelo MAPI (`ns_canais.py`). Lido por `canais.js` (puro). `ferramentas/pacote.py --canais` inclui o campo.
 - **Só aparece se `voz + vivo + chat` for exatamente o volume do C.O. do período** (`doPeriodo().confere`, nos dias que o consolidado cobre). Dia faltando ou soma diferente: a abertura some e o resto do card fica. Não muda nenhum número do NS.
 - Mesma regra no e-mail do MAPI (`ns_email.acionamentos_b2c`).
