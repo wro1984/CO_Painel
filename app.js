@@ -931,7 +931,7 @@
       const base = b2c ? tot : co, alvo = b2c ? 'B2C' : 'CO';
       return `<div class="sub3">${b2c ? 'B2C por canal · CO + TEL · como no PBI' : 'CO por canal · como no PBI'}</div>
         <div class="tri">${bx('voz', 'Voz', pt(v.voz), dl(v.voz, pr && pr.voz, true), `<b>${pct(v.voz, base)}</b> do ${alvo}`)}${bx('vivo', 'Vivo +', pt(v.vivo), dl(v.vivo, pr && pr.vivo, true), `<b>${pct(v.vivo, base)}</b> do ${alvo}`)}${bx('chat', 'Chat', pt(v.chat), dl(v.chat, pr && pr.chat, true), `<b>${pct(v.chat, base)}</b> do ${alvo}`)}</div>
-        <div class="small muted" style="margin-top:8px">${b2c ? `Voz e Vivo + incluem a TEL (voz): ${pt(can.tvoz)} + ${pt(can.tvivo)}. ` : ''}No PBI (CO): <b>VOZ + VIVO +</b> = ${pt(can.voz + can.vivo)} · <b>CHAT</b> = ${pt(can.chat)}. Vivo + = atendimento por mensagem (skills _MM); Chat = chat Dani.</div>`;
+        <div class="small muted" style="margin-top:8px">${b2c ? (can.tvivo > 0 ? `Voz e Vivo + incluem a TEL (voz): ${pt(can.tvoz)} + ${pt(can.tvivo)}. ` : `Voz inclui a TEL (${pt(can.tvoz)} chamadas, todas de voz). `) : ''}No PBI (CO): <b>VOZ + VIVO +</b> = ${pt(can.voz + can.vivo)} · <b>CHAT</b> = ${pt(can.chat)}. Vivo + = atendimento por mensagem (skills _MM); Chat = chat Dani.</div>`;
     })() : '';
     const recebidas = `<div class="card cardfr"><h2>Chamadas recebidas por frente · ${rot}</h2>
       <div class="tri">${bx('co', 'CO', pt(co), dl(co, cp, true), `<b>${pct(co, tot)}</b> do total`)}${bx('tel', 'TEL', pt(tel), dl(tel, tp, true), `<b>${pct(tel, tot)}</b> do total`)}${bx('tot', 'CO + TEL', pt(tot), dl(tot, cp != null && tp != null ? cp + tp : null, true), '<b>100%</b>')}</div>
