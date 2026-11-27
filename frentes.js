@@ -10,7 +10,7 @@
  */
 (function (root) {
   'use strict';
-  const VERSAO = '3.14.1';
+  const VERSAO = '3.15.0';
   const SEGMENTO = 'B2C_MANOBRA';
   const ISO = /^\d{4}-\d{2}-\d{2}$/;
   const trio = a => Array.isArray(a) && a.length === 3 && a.every(n => Number.isInteger(n) && n >= 0) && a[1] <= a[0] && a[2] <= a[1];
@@ -49,6 +49,22 @@
   // O humano daqui tem que ser exatamente a linha da Manobra do NS (volume, atendidas, no corte): senão os dois contam coisas diferentes
   const confere = (s, row) => !!row && s.h.vol === row.volume && s.h.at === row.total && s.h.cor === row.ate;
 
-  const api = { VERSAO, SEGMENTO, ler, somar, ns, parte, confere };
+  // Manobra nos MESMOS dias de uma linha do consolidado B2C (que só vale a partir do início da TEL: r.desde). Cards da aba B2C:
+  // solicitações (humano + robô), atendidas pelo humano e pelo robô. completo = a Manobra cobre todos os dias da linha (senão o
+  // Acionamentos não soma, porque misturaria dias com e sem Manobra). Sem dado da Manobra nos dias = null.
+  function doPeriodo(dados, r) {
+    if (!dados || !r) return null;
+    const ini = r.desde && r.desde > r.inicio ? r.desde : r.inicio;
+    const s = somar(dados, ini, r.fim);
+    if (!s.dias) return null;
+    return { vol: s.t.vol, hum: s.h.at, rob: s.r.at, dias: s.dias, completo: s.dias === r.dias };
+  }
+  // Acionamentos = chamadas recebidas do CO + da TEL + solicitações da Manobra (humano + robô); null se a Manobra não cobre o período
+  function acionamentos(r, man) {
+    if (!r || !r.co || !r.tel || !man || !man.completo) return null;
+    return { co: r.co.volume, tel: r.tel.volume, man: man.vol, total: r.co.volume + r.tel.volume + man.vol };
+  }
+
+  const api = { VERSAO, SEGMENTO, ler, somar, ns, parte, confere, doPeriodo, acionamentos };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.NSFrentes = api;
 })(typeof self !== 'undefined' ? self : this);
