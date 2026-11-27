@@ -1,7 +1,7 @@
 /* NS Painel — app (v3.2: dados criptografados publicados pelo MAPI, com acesso aprovado) */
 (function () {
   'use strict';
-  const APP_VERSION = '3.16.1';
+  const APP_VERSION = '3.16.2';
   const P = window.NSData;
   const K = window.NSCripto;
   // Problemas sistêmicos (sistemas.js): só com a mesma versão do app (evita misturar arquivos de versões diferentes)
@@ -924,14 +924,21 @@
     // abertura do CO como o PBI: Voz, Vivo+ (skills _MM) e Chat (Dani). Só aparece se bater exatamente com o volume do C.O. (canais.js)
     const can = CAN && canaisInfo ? CAN.doPeriodo(canaisInfo, cur) : null;
     const canP = CAN && canaisInfo && prev ? CAN.doPeriodo(canaisInfo, prev) : null;
-    // B2C (CO + TEL) quando a TEL também fecha com o volume dela: Voz = voz + TEL, Vivo + = Vivo + + TEL, Chat = chat. Senão só o CO.
+    // Cada frente aberta no seu canal, como no PBI: CO (Voz, Vivo +, Chat), TEL (Voz; a TEL é voz) e B2C = CO + TEL (Voz, Vivo +, Chat).
+    // O CO só aparece se bater com o volume do C.O.; TEL e B2C só se a TEL também fechar com o volume dela (senão fica só o CO).
     const canais = can && can.confere ? (() => {
-      const b2c = !!can.confereTel;
-      const v = b2c ? can.b2c : can, pr = canP && (b2c ? canP.confereTel : canP.confere) ? (b2c ? canP.b2c : canP) : null;
-      const base = b2c ? tot : co, alvo = b2c ? 'B2C' : 'CO';
-      return `<div class="sub3">${b2c ? 'B2C por canal · CO + TEL · como no PBI' : 'CO por canal · como no PBI'}</div>
-        <div class="tri">${bx('voz', 'Voz', pt(v.voz), dl(v.voz, pr && pr.voz, true), `<b>${pct(v.voz, base)}</b> do ${alvo}`)}${bx('vivo', 'Vivo +', pt(v.vivo), dl(v.vivo, pr && pr.vivo, true), `<b>${pct(v.vivo, base)}</b> do ${alvo}`)}${bx('chat', 'Chat', pt(v.chat), dl(v.chat, pr && pr.chat, true), `<b>${pct(v.chat, base)}</b> do ${alvo}`)}</div>
-        <div class="small muted" style="margin-top:8px">${b2c ? (can.tvivo > 0 ? `Voz e Vivo + incluem a TEL (voz): ${pt(can.tvoz)} + ${pt(can.tvivo)}. ` : `Voz inclui a TEL (${pt(can.tvoz)} chamadas, todas de voz). `) : ''}No PBI (CO): <b>VOZ + VIVO +</b> = ${pt(can.voz + can.vivo)} · <b>CHAT</b> = ${pt(can.chat)}. Vivo + = atendimento por mensagem (skills _MM); Chat = chat Dani.</div>`;
+      const grupo = (titulo, itens, base, alvo) => `<div class="sub3">${titulo}</div>
+        <div class="tri">${itens.map(([cls, nome, v, p]) => bx(cls, nome, pt(v), dl(v, p, true), `<b>${pct(v, base)}</b> do ${alvo}`)).join('')}</div>`;
+      const pc0 = canP && canP.confere ? canP : null, pt0 = canP && canP.confereTel ? canP : null;
+      let h = grupo('CO por canal', [['voz', 'Voz', can.voz, pc0 && pc0.voz], ['vivo', 'Vivo +', can.vivo, pc0 && pc0.vivo], ['chat', 'Chat', can.chat, pc0 && pc0.chat]], co, 'CO');
+      if (can.confereTel) {
+        const it = [['voz', 'Voz', can.tvoz, pt0 && pt0.tvoz]];
+        if (can.tvivo > 0) it.push(['vivo', 'Vivo +', can.tvivo, pt0 && pt0.tvivo]);
+        h += grupo('TEL por canal', it, tel, 'TEL');
+        h += grupo('B2C por canal · CO + TEL', [['voz', 'Voz', can.b2c.voz, pt0 && pt0.b2c.voz], ['vivo', 'Vivo +', can.b2c.vivo, pt0 && pt0.b2c.vivo], ['chat', 'Chat', can.b2c.chat, pt0 && pt0.b2c.chat]], tot, 'B2C');
+      }
+      return `${h}
+        <div class="small muted" style="margin-top:8px">Como no PBI: <b>VOZ + VIVO +</b> (CO) = ${pt(can.voz + can.vivo)} · <b>CHAT</b> = ${pt(can.chat)}${can.confereTel ? ` · <b>TEL</b> = ${pt(can.tvoz + can.tvivo)}` : ''}. Vivo + = atendimento por mensagem (skills _MM); Chat = chat Dani; a TEL é só voz. B2C = CO + TEL.</div>`;
     })() : '';
     const recebidas = `<div class="card cardfr"><h2>Chamadas recebidas por frente · ${rot}</h2>
       <div class="tri">${bx('co', 'CO', pt(co), dl(co, cp, true), `<b>${pct(co, tot)}</b> do total`)}${bx('tel', 'TEL', pt(tel), dl(tel, tp, true), `<b>${pct(tel, tot)}</b> do total`)}${bx('tot', 'CO + TEL', pt(tot), dl(tot, cp != null && tp != null ? cp + tp : null, true), '<b>100%</b>')}</div>

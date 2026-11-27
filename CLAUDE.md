@@ -198,3 +198,5 @@ Dentro do card "Chamadas recebidas por frente" (aba B2C), uma segunda fileira ab
 - Vem do campo opcional **`canais`** do `dados.json` (cifrado com a mesma chave, `K.abrirCanais`; `{v:1, inicio, ate, dias:[{d, voz, vivo, chat}]}`), feito pelo MAPI (`ns_canais.py`). Lido por `canais.js` (puro). `ferramentas/pacote.py --canais` inclui o campo.
 - **Só aparece se `voz + vivo + chat` for exatamente o volume do C.O. do período** (`doPeriodo().confere`, nos dias que o consolidado cobre). Dia faltando ou soma diferente: a abertura some e o resto do card fica. Não muda nenhum número do NS.
 - Mesma regra no e-mail do MAPI (`ns_email.acionamentos_b2c`).
+
+**v3.16.2 — cada frente no seu ramo:** a fileira vira três ramos, como no PBI: **CO por canal** (Voz, Vivo +, Chat), **TEL por canal** (Voz; Vivo + só se a TEL tiver mídia `VIVO +`) e **B2C por canal · CO + TEL** (Voz = voz do CO + TEL, Vivo + , Chat). Os ramos da TEL e do B2C só aparecem se a TEL fechar com o volume dela; senão fica só o ramo do CO. (A v3.16.1 tinha trocado o ramo do CO pela soma: não faça isso.)

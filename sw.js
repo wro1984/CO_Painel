@@ -1,5 +1,5 @@
 /* NS Painel — service worker */
-const VERSION = '3.16.1';
+const VERSION = '3.16.2';
 const CACHE = 'ns-painel-v' + VERSION;
 const CORE = ['./', 'index.html', 'app.js', 'parser.js', 'cripto.js', 'sistemas.js', 'frentes.js', 'canais.js', 'consolidado.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
