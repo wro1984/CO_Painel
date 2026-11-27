@@ -12,7 +12,7 @@ Quem sai da lista de aprovados não recebe a chave nova e para de abrir os dados
 Uso (teste local):
   python ferramentas/pacote.py codigo
   python ferramentas/pacote.py montar --txt dados.txt --acesso MATRICULA:CODIGO \
-      --estado acessos_local.json --saida dados.json [--sistemas sistemas.txt] [--bases bases.json] [--manobra manobra.json]
+      --estado acessos_local.json --saida dados.json [--sistemas sistemas.txt] [--bases bases.json] [--manobra manobra.json] [--canais canais.json]
 
 `--sistemas` (opcional) inclui o TXT de problemas sistêmicos no campo "sistemas" do
 dados.json: mesmo formato do sistemas.txt (tabulação, cabeçalho na 1ª linha, colunas
@@ -88,7 +88,7 @@ def novo_acesso(matricula: str, codigo: str, iteracoes: int = ITERACOES) -> dict
 
 
 def montar_pacote(texto: bytes, acessos: list, iteracoes: int = ITERACOES, sistemas: bytes = None,
-                  bases: bytes = None, manobra: bytes = None) -> dict:
+                  bases: bytes = None, manobra: bytes = None, canais: bytes = None) -> dict:
     if not acessos:
         raise ValueError("Nenhum acesso aprovado: ninguém conseguiria abrir os dados.")
     chave_dados = AESGCM.generate_key(bit_length=256)
@@ -110,6 +110,9 @@ def montar_pacote(texto: bytes, acessos: list, iteracoes: int = ITERACOES, siste
     if manobra is not None:
         iv_m = os.urandom(12)
         pacote["manobra"] = {"iv": _b64(iv_m), "ct": _b64(AESGCM(chave_dados).encrypt(iv_m, manobra, None))}
+    if canais is not None:
+        iv_c = os.urandom(12)
+        pacote["canais"] = {"iv": _b64(iv_c), "ct": _b64(AESGCM(chave_dados).encrypt(iv_c, canais, None))}
     for a in acessos:
         iv_a = os.urandom(12)
         chave = base64.b64decode(a["chave"])
@@ -131,6 +134,7 @@ def main():
     m.add_argument("--sistemas", help="TXT de problemas sistêmicos (opcional, mesmo formato do sistemas.txt)")
     m.add_argument("--bases", help="JSON da atualização das bases (opcional, formato de ns_bases.py no MAPI)")
     m.add_argument("--manobra", help="JSON da divisão humano × robô da Manobra (opcional, formato de ns_manobra.frentes_json no MAPI)")
+    m.add_argument("--canais", help="JSON da abertura do volume do CO em voz, Vivo+ e chat (opcional, formato de ns_canais.canais_json no MAPI)")
     a = ap.parse_args()
     if a.cmd == "codigo":
         print(novo_codigo())
@@ -162,12 +166,16 @@ def main():
     if a.manobra:
         with open(a.manobra, "rb") as f:
             manobra = f.read()
+    canais = None
+    if a.canais:
+        with open(a.canais, "rb") as f:
+            canais = f.read()
     sistemas = None
     if a.sistemas:
         with open(a.sistemas, "rb") as f:
             sistemas = f.read()
     with open(a.saida, "w", encoding="utf-8") as f:
-        json.dump(montar_pacote(texto, acessos, a.iteracoes, sistemas, bases, manobra), f, ensure_ascii=False)
+        json.dump(montar_pacote(texto, acessos, a.iteracoes, sistemas, bases, manobra, canais), f, ensure_ascii=False)
     print(f"{a.saida}: {len(texto)} bytes de dados"
           + (f", {len(sistemas)} bytes de sistemas" if sistemas is not None else "")
           + f", {len(acessos)} acesso(s).")

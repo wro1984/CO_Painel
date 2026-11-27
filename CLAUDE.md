@@ -191,3 +191,10 @@ Só na aba **B2C** (segmento `CONSOLIDADO`), logo abaixo dos 4 cartões e do fil
 - Sem `manobra` no pacote, ou Manobra cobrindo só parte dos dias do período: o Acionamentos mostra "—" (não mistura dias com e sem Manobra) e o card da Manobra some (sem dado) ou avisa "X de Y dias" (parcial).
 - Variação só com os dois períodos **completos** (como `varRecebidas`); período aberto mostra "—". Não muda nenhum número do NS.
 - Teste: `node --test ferramentas/*.test.js` (`doPeriodo`, `acionamentos`, `desde`). Em tela: harness com iframe `?mapi` e TXT de `dados_teste.py --tel-desde` + JSON de manobra inventado.
+
+## CO por canal: Voz, Vivo + e Chat (desde a v3.16.0)
+
+Dentro do card "Chamadas recebidas por frente" (aba B2C), uma segunda fileira abre o **C.O.** como o PBI: **Voz**, **Vivo +** e **Chat**. No PBI, "VOZ + VIVO +" é o canal `VOZ_GENESYS` (voz pela URA + skills `_MM` do Vivo+) e "CHAT" é o chat Dani.
+- Vem do campo opcional **`canais`** do `dados.json` (cifrado com a mesma chave, `K.abrirCanais`; `{v:1, inicio, ate, dias:[{d, voz, vivo, chat}]}`), feito pelo MAPI (`ns_canais.py`). Lido por `canais.js` (puro). `ferramentas/pacote.py --canais` inclui o campo.
+- **Só aparece se `voz + vivo + chat` for exatamente o volume do C.O. do período** (`doPeriodo().confere`, nos dias que o consolidado cobre). Dia faltando ou soma diferente: a abertura some e o resto do card fica. Não muda nenhum número do NS.
+- Mesma regra no e-mail do MAPI (`ns_email.acionamentos_b2c`).

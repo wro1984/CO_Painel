@@ -1,12 +1,13 @@
 /* NS Painel — app (v3.2: dados criptografados publicados pelo MAPI, com acesso aprovado) */
 (function () {
   'use strict';
-  const APP_VERSION = '3.15.0';
+  const APP_VERSION = '3.16.0';
   const P = window.NSData;
   const K = window.NSCripto;
   // Problemas sistêmicos (sistemas.js): só com a mesma versão do app (evita misturar arquivos de versões diferentes)
   const SIS = window.NSSistemas && window.NSSistemas.versao === APP_VERSION ? window.NSSistemas : null;
   const FRT = window.NSFrentes && window.NSFrentes.VERSAO === APP_VERSION ? window.NSFrentes : null;   // Manobra: humano × robô
+  const CAN = window.NSCanais && window.NSCanais.VERSAO === APP_VERSION ? window.NSCanais : null;   // abertura do CO: voz, Vivo+ e chat
   const CONS = window.NSConsolidado && window.NSConsolidado.VERSAO === APP_VERSION ? window.NSConsolidado : null;   // aba Consolidado (C.O. + TEL)
   const $ = s => document.querySelector(s);
   const main = $('#main');
@@ -214,6 +215,7 @@
     await sistemasDoPacote(b.pacote).catch(() => {});
     await basesDoPacote(b.pacote).catch(() => {});
     await frentesDoPacote(b.pacote).catch(() => {});
+    await canaisDoPacote(b.pacote).catch(() => {});
     const { text } = P.decode(bytes);
     const pr = P.parse(text);
     const lm = b.lm || (b.pacote.gerado_em ? Date.parse(b.pacote.gerado_em) : null);
@@ -238,7 +240,7 @@
     try { await K.apagarCred(); } catch (e) {}
     try { for (const s of snaps) await dbDel(s.id); } catch (e) {}
     await apagarSistemas();
-    basesInfo = null; frentesInfo = null;
+    basesInfo = null; frentesInfo = null; canaisInfo = null;
     cred = null; snaps = []; preview = null; pubStatus = null;
     loginMsg = motivo || '';
     render();
@@ -292,6 +294,7 @@
         await sistemasDoPacote(pacoteLogin.pacote).catch(() => {});
         await basesDoPacote(pacoteLogin.pacote).catch(() => {});
         await frentesDoPacote(pacoteLogin.pacote).catch(() => {});
+        await canaisDoPacote(pacoteLogin.pacote).catch(() => {});
         pacoteLogin = null;
         toast('Acesso liberado neste aparelho ✓');
         go(snaps.length ? 'painel' : 'dados');
@@ -457,6 +460,20 @@
     frentesInfo = novo;
     if (mudou) redesenharPainel();
   }
+  // ---------- Canais do CO: voz, Vivo+ e chat (canais.js) ----------
+  // Campo opcional "canais" do dados.json (mesma chave): abre as chamadas recebidas do CO como o PBI. Só informa; some se não bater com o volume do C.O.
+  let canaisInfo = null;
+  async function canaisDoPacote(pacote) {
+    if (!cred || !CAN) return;
+    let bytes;
+    try { bytes = await K.abrirCanais(pacote, cred); }
+    catch (e) { return; }                                   // acesso perdido é tratado na abertura dos dados
+    const novo = bytes ? CAN.ler(P.decode(bytes).text) : null;
+    const mudou = JSON.stringify(novo) !== JSON.stringify(canaisInfo);
+    canaisInfo = novo;
+    if (mudou) redesenharPainel();
+  }
+  function canaisDoMapi(texto) { canaisInfo = CAN && texto != null && String(texto).trim() !== '' ? CAN.ler(texto) : null; }
   function frentesDoMapi(texto) { frentesInfo = FRT && texto != null && String(texto).trim() !== '' ? FRT.ler(texto) : null; }
   // soma do período r (humano, robô, total), só na aba da Manobra e se conferir com a linha do NS; senão null
   function frentesPeriodo(r) {
@@ -904,8 +921,18 @@
         <div class="ac-v"><b>—</b></div>
         <div class="small muted">${man ? 'A Manobra Off não cobre todos os dias deste período: não dá para somar.' : 'Sem dados da Manobra Off neste período: o total fica em “—”.'} Acionamentos = chamadas recebidas (CO + TEL) + solicitações de Manobra Off.</div></div>`;
     }
+    // abertura do CO como o PBI: Voz, Vivo+ (skills _MM) e Chat (Dani). Só aparece se bater exatamente com o volume do C.O. (canais.js)
+    const can = CAN && canaisInfo ? CAN.doPeriodo(canaisInfo, cur) : null;
+    const canP = CAN && canaisInfo && prev ? CAN.doPeriodo(canaisInfo, prev) : null;
+    const canais = can && can.confere ? (() => {
+      const pr = canP && canP.confere ? canP : null;
+      return `<div class="sub3">CO por canal · como no PBI</div>
+        <div class="tri">${bx('voz', 'Voz', pt(can.voz), dl(can.voz, pr && pr.voz, true), `<b>${pct(can.voz, co)}</b> do CO`)}${bx('vivo', 'Vivo +', pt(can.vivo), dl(can.vivo, pr && pr.vivo, true), `<b>${pct(can.vivo, co)}</b> do CO`)}${bx('chat', 'Chat', pt(can.chat), dl(can.chat, pr && pr.chat, true), `<b>${pct(can.chat, co)}</b> do CO`)}</div>
+        <div class="small muted" style="margin-top:8px">No PBI: <b>VOZ + VIVO +</b> = ${pt(can.voz + can.vivo)} · <b>CHAT</b> = ${pt(can.chat)}. Vivo + = atendimento por mensagem (skills _MM); Chat = chat Dani.</div>`;
+    })() : '';
     const recebidas = `<div class="card cardfr"><h2>Chamadas recebidas por frente · ${rot}</h2>
       <div class="tri">${bx('co', 'CO', pt(co), dl(co, cp, true), `<b>${pct(co, tot)}</b> do total`)}${bx('tel', 'TEL', pt(tel), dl(tel, tp, true), `<b>${pct(tel, tot)}</b> do total`)}${bx('tot', 'CO + TEL', pt(tot), dl(tot, cp != null && tp != null ? cp + tp : null, true), '<b>100%</b>')}</div>
+      ${canais}
       <div class="small muted" style="margin-top:8px">Mesma conta do PBI: CO = voz + chat; TEL = filas da TEL; sem contar nada duas vezes${prev ? `. Variação${vs}${aviso}` : ''}.</div></div>`;
     let manobra = '';
     if (man) {
@@ -1494,17 +1521,18 @@
     window.addEventListener('message', e => {
       if (e.source !== window.parent || !e.data || e.data.tipo !== 'co-painel:dados') return;
       const d = e.data;
-      if (d.erro) { snaps = []; sistemasDoMapi(null); frentesDoMapi(null); mapiInfo = { erro: d.erro }; render(); return; }
+      if (d.erro) { snaps = []; sistemasDoMapi(null); frentesDoMapi(null); canaisDoMapi(null); mapiInfo = { erro: d.erro }; render(); return; }
       const texto = String(d.texto || '');
       const pr = P.parse(texto);
       if (pr.erros.length) {
-        snaps = []; sistemasDoMapi(null); frentesDoMapi(null);
+        snaps = []; sistemasDoMapi(null); frentesDoMapi(null); canaisDoMapi(null);
         mapiInfo = { erro: `Os dados têm ${pr.erros.length} erro(s): ` + pr.erros.slice(0, 3).map(x => x.msg).join(' · ') };
       } else {
         snaps = [montarSnap(pr, P.hash(texto), 'publicado', 'MAPI', d.publicadoEm ? Date.parse(d.publicadoEm) : Date.now())];
         sistemasDoMapi(d.sistemas);
         basesDoMapi(d.bases);
         frentesDoMapi(d.manobra);
+        canaisDoMapi(d.canais);
         mapiInfo = { origem: d.origem || '' };
       }
       sel = null; render();
