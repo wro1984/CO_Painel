@@ -10,7 +10,7 @@
  */
 (function (root) {
   'use strict';
-  const VERSAO = '3.16.0';
+  const VERSAO = '3.16.1';
   const SEGMENTO = 'CONSOLIDADO', CO = 'B2C', TEL = 'B2C_TEL';
   const segDe = r => r.segmento || CO;
   const ns4 = (a, b) => b > 0 ? Math.round(a / b * 10000) / 10000 : null;
