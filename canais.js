@@ -13,7 +13,7 @@
  */
 (function (root) {
   'use strict';
-  const VERSAO = '3.16.1';
+  const VERSAO = '3.16.2';
   const ISO = /^\d{4}-\d{2}-\d{2}$/;
   const nat = n => Number.isInteger(n) && n >= 0;
 
