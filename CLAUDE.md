@@ -181,3 +181,13 @@ Regra (a mesma do consolidado do `cardCoTel`): NS = (no corte do C.O. + no corte
 - Abre no **Consolidado** quem nunca escolheu um segmento; quem já escolheu continua no que escolheu. As bases e o aviso "base desatualizada" do Consolidado usam as do B2C.
 - Histórico, importação e conferência de períodos fechados só enxergam o que veio no TXT (nunca o consolidado).
 - Dados de teste com TEL: `python ferramentas/dados_teste.py --ate 2026-11-23 --tel-desde 2026-11-16 > teste.txt`.
+
+## Cards da aba B2C: Acionamentos, recebidas por frente e Manobra Off (desde a v3.15.0)
+
+Só na aba **B2C** (segmento `CONSOLIDADO`), logo abaixo dos 4 cartões e do filtro de dia da semana (`cardsB2C()` em `app.js`). Seguem o período escolhido (dia, semana, mês, ou a linha selecionada).
+- **Acionamentos** = chamadas recebidas do CO + da TEL + **solicitações** da Manobra Off (humano + robô). Barra empilhada CO/TEL/Manobra. Conta pura em `FRT.acionamentos()` (`frentes.js`).
+- **Chamadas recebidas por frente**: CO, TEL e CO + TEL, com a participação e a variação contra o período anterior (receber mais = vermelho, menos = verde, como nos outros cartões). Vêm de `co.volume`/`tel.volume` da linha consolidada: nada novo no TXT.
+- **Manobra Off**: Manobras (solicitações), atendidas por humano (`h.at`) e por robô (`r.at`), com barra humano × robô. Vem do campo opcional `manobra` do `dados.json` (o mesmo de `frentes.js`), somado **só nos dias que o consolidado cobre** (`desde` na linha, `FRT.doPeriodo()`): mês em que a TEL começou no meio soma a Manobra só dos mesmos dias.
+- Sem `manobra` no pacote, ou Manobra cobrindo só parte dos dias do período: o Acionamentos mostra "—" (não mistura dias com e sem Manobra) e o card da Manobra some (sem dado) ou avisa "X de Y dias" (parcial).
+- Variação só com os dois períodos **completos** (como `varRecebidas`); período aberto mostra "—". Não muda nenhum número do NS.
+- Teste: `node --test ferramentas/*.test.js` (`doPeriodo`, `acionamentos`, `desde`). Em tela: harness com iframe `?mapi` e TXT de `dados_teste.py --tel-desde` + JSON de manobra inventado.

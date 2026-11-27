@@ -10,7 +10,7 @@
  */
 (function (root) {
   'use strict';
-  const VERSAO = '3.14.1';
+  const VERSAO = '3.15.0';
   const SEGMENTO = 'CONSOLIDADO', CO = 'B2C', TEL = 'B2C_TEL';
   const segDe = r => r.segmento || CO;
   const ns4 = (a, b) => b > 0 ? Math.round(a / b * 10000) / 10000 : null;
@@ -47,7 +47,7 @@
 
     const base0 = (c, extra) => Object.assign({
       ordem: c.ordem, tipo: c.tipo, periodo: c.periodo, inicio: c.inicio, fim: c.fim, meta: c.meta, status: null, extras: {},
-      segmento: SEGMENTO, corte, base: 'ATENDIDAS', conferidoSoma: true, consolidado: true,
+      segmento: SEGMENTO, corte, base: 'ATENDIDAS', conferidoSoma: true, consolidado: true, desde: inicioTel,
     }, extra);
     const out = [];
     for (const d of dias) {

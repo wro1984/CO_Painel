@@ -93,3 +93,7 @@ test('TEL com linhas zeradas antes de começar não vira "consolidado só do C.O
   assert.strictEqual(d17.total, 180);                                            // só o C.O., mas o dia entra
   assert.deepStrictEqual(C.consolidar(rows.map(x => x.segmento === 'B2C_TEL' ? { ...x, volume: 0, total: 0, ate: 0 } : x)), []);   // TEL sem nenhuma chamada
 });
+
+test('v3.15.0: cada linha do consolidado traz "desde" (primeiro dia da TEL com chamadas)', () => {
+  for (const x of C.consolidar(rows)) assert.strictEqual(x.desde, '2026-11-16');
+});

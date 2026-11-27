@@ -59,3 +59,22 @@ test('a versão acompanha a do app', () => {
   const sis = require('fs').readFileSync(__dirname + '/../sistemas.js', 'utf8').match(/VERSAO = '([^']+)'/)[1];
   assert.deepStrictEqual([F.VERSAO, sw, sis], [app, app, app]);
 });
+
+// ---- v3.15.0: cards da aba B2C (Manobra nos dias do consolidado, Acionamentos) ----
+test('doPeriodo: soma a Manobra só a partir do início do consolidado (desde)', () => {
+  const dados = F.ler(dado(D));
+  const m = F.doPeriodo(dados, { inicio: '2026-10-01', fim: '2026-10-03', desde: '2026-10-02', dias: 2 });
+  assert.deepStrictEqual(m, { vol: 12 + 8 + 0 + 30, hum: 10 + 8, rob: 0 + 29, dias: 2, completo: true });
+  const parcial = F.doPeriodo(dados, { inicio: '2026-10-01', fim: '2026-10-03', desde: '2026-10-01', dias: 5 });
+  assert.strictEqual(parcial.completo, false);                       // a Manobra cobre 3 dos 5 dias
+  assert.strictEqual(F.doPeriodo(dados, { inicio: '2026-11-01', fim: '2026-11-01', dias: 1 }), null);   // sem dado nos dias
+  assert.strictEqual(F.doPeriodo(null, { inicio: '2026-10-01', fim: '2026-10-01', dias: 1 }), null);
+});
+
+test('acionamentos = CO + TEL + Manobra (humano + robô); sem Manobra completa = null', () => {
+  const r = { co: { volume: 300 }, tel: { volume: 200 } };
+  assert.deepStrictEqual(F.acionamentos(r, { vol: 50, completo: true }), { co: 300, tel: 200, man: 50, total: 550 });
+  assert.strictEqual(F.acionamentos(r, { vol: 50, completo: false }), null);
+  assert.strictEqual(F.acionamentos(r, null), null);
+  assert.strictEqual(F.acionamentos({ volume: 1 }, { vol: 50, completo: true }), null);   // linha sem co/tel (não é o B2C)
+});

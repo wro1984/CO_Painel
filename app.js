@@ -1,7 +1,7 @@
 /* NS Painel — app (v3.2: dados criptografados publicados pelo MAPI, com acesso aprovado) */
 (function () {
   'use strict';
-  const APP_VERSION = '3.14.1';
+  const APP_VERSION = '3.15.0';
   const P = window.NSData;
   const K = window.NSCripto;
   // Problemas sistêmicos (sistemas.js): só com a mesma versão do app (evita misturar arquivos de versões diferentes)
@@ -868,6 +868,60 @@
       <div class="dica2">Meta ${p1(metaDe(co))}% · toque num card para abrir o detalhe do CO ou da TEL${sg === 'CONSOLIDADO' ? '' : ', ou no B2C'}</div></div>`;
   }
 
+  // Cards só da aba B2C (v3.15.0): Acionamentos, chamadas recebidas por frente (CO, TEL, CO + TEL) e Manobra Off (solicitações, humano, robô).
+  // Seguem o período escolhido (dia, semana, mês). Acionamentos = recebidas do CO + da TEL + solicitações da Manobra (humano + robô).
+  // A Manobra vem do campo opcional "manobra" do dados.json, somada só nos dias que o consolidado cobre; sem ela o Acionamentos mostra "—".
+  function cardsB2C(cur, prev) {
+    if (segAtual() !== 'CONSOLIDADO' || !cur || !cur.co || !cur.tel) return '';
+    const man = FRT && frentesInfo ? FRT.doPeriodo(frentesInfo, cur) : null;
+    const manP = FRT && frentesInfo && prev ? FRT.doPeriodo(frentesInfo, prev) : null;
+    const ac = FRT ? FRT.acionamentos(cur, man) : null, acP = FRT && prev ? FRT.acionamentos(prev, manP) : null;
+    const rot = esc(P.rotulo(cur, modo !== 'DIA'));
+    const pt = fmtInt;
+    const pct = (a, b) => b > 0 ? p1(a / b) + '%' : '—';
+    // variação contra o período anterior, só com os dois períodos completos; inverso: receber mais é ruim (vermelho), menos é bom (verde)
+    const comp = !!(prev && cur.completo && prev.completo);
+    const vs = prev ? ` vs ${esc(nomePrev(modo, prev))}` : '';
+    const dl = (a, b, inverso) => {
+      if (!comp || a == null || b == null || !(b > 0)) return '<span class="dlt neu">—</span>';
+      const v = r1((a / b - 1) * 100);
+      return `<span class="dlt ${v === 0 ? 'neu' : (v > 0) !== !!inverso ? 'up' : 'down'}">${v === 0 ? '' : v > 0 ? '▲ ' : '▼ '}${Math.abs(v).toFixed(1).replace('.', ',')}%</span>`;
+    };
+    const aviso = !prev ? '' : comp ? '' : ' · período parcial';
+    const co = cur.co.volume, tel = cur.tel.volume, tot = co + tel;
+    const cp = prev && prev.co ? prev.co.volume : null, tp = prev && prev.tel ? prev.tel.volume : null;
+    const bx = (cls, titulo, valor, delta, rodape) => `<div class="bx ${cls}"><div class="tt">${titulo}</div><div class="v">${valor}</div><div class="d">${delta}</div><div class="m">${rodape}</div></div>`;
+    let acionamentos;
+    if (ac) {
+      const w = n => (n / ac.total * 100).toFixed(2);
+      acionamentos = `<div class="card cardac"><h2>Acionamentos · ${rot}</h2>
+        <div class="ac-v"><b>${pt(ac.total)}</b>${dl(ac.total, acP && acP.total, true)}${prev ? `<small class="muted">${vs.trim()}${aviso}</small>` : ''}</div>
+        <div class="seg3" role="img" aria-label="CO, TEL e Manobra Off"><span style="width:${w(ac.co)}%;background:var(--p700)"></span><span style="width:${w(ac.tel)}%;background:var(--azulB)"></span><span style="width:${w(ac.man)}%;background:var(--rosa)"></span></div>
+        <div class="leg3"><span><i style="background:var(--p700)"></i>CO ${pt(ac.co)} · ${pct(ac.co, ac.total)}</span><span><i style="background:var(--azulB)"></i>TEL ${pt(ac.tel)} · ${pct(ac.tel, ac.total)}</span><span><i style="background:var(--rosa)"></i>Manobra ${pt(ac.man)} · ${pct(ac.man, ac.total)}</span></div>
+        <div class="small muted">Acionamentos = chamadas recebidas (CO + TEL) + solicitações de Manobra Off (humano e robô).</div></div>`;
+    } else {
+      acionamentos = `<div class="card cardac"><h2>Acionamentos · ${rot}</h2>
+        <div class="ac-v"><b>—</b></div>
+        <div class="small muted">${man ? 'A Manobra Off não cobre todos os dias deste período: não dá para somar.' : 'Sem dados da Manobra Off neste período: o total fica em “—”.'} Acionamentos = chamadas recebidas (CO + TEL) + solicitações de Manobra Off.</div></div>`;
+    }
+    const recebidas = `<div class="card cardfr"><h2>Chamadas recebidas por frente · ${rot}</h2>
+      <div class="tri">${bx('co', 'CO', pt(co), dl(co, cp, true), `<b>${pct(co, tot)}</b> do total`)}${bx('tel', 'TEL', pt(tel), dl(tel, tp, true), `<b>${pct(tel, tot)}</b> do total`)}${bx('tot', 'CO + TEL', pt(tot), dl(tot, cp != null && tp != null ? cp + tp : null, true), '<b>100%</b>')}</div>
+      <div class="small muted" style="margin-top:8px">Mesma conta do PBI: CO = voz + chat; TEL = filas da TEL; sem contar nada duas vezes${prev ? `. Variação${vs}${aviso}` : ''}.</div></div>`;
+    let manobra = '';
+    if (man) {
+      const sem = Math.max(0, man.vol - man.hum - man.rob);
+      const ph = man.vol > 0 ? man.hum / man.vol : null, pr = man.vol > 0 ? man.rob / man.vol : null;
+      const mp = manP && manP.completo ? manP : null;
+      const dm = (a, b, inv) => comp && mp ? dl(a, b, inv) : '<span class="dlt neu">—</span>';
+      manobra = `<div class="card frentes cardman"><h2>Manobra Off · ${rot}</h2>
+        <div class="tri">${bx('man', 'Manobras', pt(man.vol), dm(man.vol, mp && mp.vol, true), 'solicitações')}${bx('hum', 'Por humano', pt(man.hum), dm(man.hum, mp && mp.hum, false), `<b>${pct(man.hum, man.vol)}</b> das manobras`)}${bx('rob', 'Por robô', pt(man.rob), dm(man.rob, mp && mp.rob, false), `<b>${pct(man.rob, man.vol)}</b> das manobras`)}</div>
+        ${ph == null ? '' : `<div class="fr-bar" style="margin-top:10px" role="img" aria-label="Humano ${pct(man.hum, man.vol)} e robô ${pct(man.rob, man.vol)}"><span class="h" style="width:${(ph * 100).toFixed(2)}%"></span><span class="r" style="width:${(pr * 100).toFixed(2)}%"></span></div>
+        <div class="fr-leg"><span><i class="h"></i>Humano ${pct(man.hum, man.vol)}</span><span><i class="r"></i>Robô ${pct(man.rob, man.vol)}</span>${sem ? `<small>${pt(sem)} sem atendimento</small>` : ''}</div>`}
+        <div class="small muted">${man.completo ? '' : `Manobra com dados em ${man.dias} de ${cur.dias} dias deste período. `}O detalhe (NS, tempo, por período) fica na aba Manobra offline.</div></div>`;
+    }
+    return acionamentos + recebidas + manobra;
+  }
+
   function painelTipo(t, items, serie, all) {
     const selRow = sel ? items.find(r => r.ordem === sel) : null;
     const cur = selRow || items[items.length - 1];
@@ -904,6 +958,7 @@
       ${cardCoTel(cur, prev)}
       <div class="kpis">${k}</div>
       ${filtro}
+      ${cardsB2C(cur, prev)}
       ${cardFrentes(t, items, cur)}
       <div class="card chart"><h2>${t === 'DIA' ? (fd != null ? `Chamadas recebidas e NS · ${WD_PLURAL[fd]}` : 'Chamadas recebidas e NS por dia') : t === 'SEMANA' ? 'Chamadas recebidas e NS por semana' : 'Chamadas recebidas e NS por mês'}</h2>${chartVol(items, t)}
         <div class="legend"><span><i style="background:var(--barR)"></i>chamadas recebidas</span><span><i class="ln mk" style="border-color:var(--laranjaL)"></i>NS ${corteAtual()} min (eixo à direita)</span></div>
